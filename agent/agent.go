@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 	"strings"
+	"sort"
 )
 
 var Mux = &http.ServeMux{}
@@ -20,7 +21,88 @@ func init() {
 }
 
 func homepage(respWriter http.ResponseWriter, request *http.Request) {
-	respWriter.Write([]byte("OK"))
+	respWriter.Write([]byte(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <!-- 引入样式 -->
+    <link rel="stylesheet" href="http://cdn.jsdeliver.net/npm/element-ui/lib/theme-chalk/index.css">
+    <style>
+        body {
+            font-family: Helvetica
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+	<el-table
+    :data="processes"
+    stripe
+	@row-click="onRowClick"
+    style="width: 100%">
+    <el-table-column
+      prop="Service"
+      label="Service"
+      width="180">
+    </el-table-column>
+    <el-table-column
+      prop="Cluster"
+      label="Cluster"
+      width="180">
+    </el-table-column>
+    <el-table-column
+      prop="ProcessId"
+      label="Process Id">
+    </el-table-column>
+    <el-table-column
+      prop="HeartbeatDelay"
+      label="Heartbeat Delay">
+    </el-table-column>
+  </el-table>
+</div>
+</body>
+<!-- 先引入 Vue -->
+<script src="http://cdn.jsdeliver.net/npm/vue/dist/vue.js"></script>
+<!-- 引入组件库 -->
+<script src="http://cdn.jsdeliver.net/npm/element-ui/lib/index.js"></script>
+<script src="http://cdn.jsdeliver.net/npm/axios/dist/axios.min.js"></script>
+<script>
+    var $vue = new Vue({
+        el: '#app',
+        data: function() {
+            return { processes: [] }
+        },
+		created: function() {
+			var me = this;
+			setInterval(function() {
+                axios.get('/active-processes?ts=' + Date.now())
+                    .then(function (resp) {
+						if (resp.data) {
+	                        me.processes = resp.data.data;
+						}
+                    });
+			}, 3000);
+		},
+		methods: {
+			onRowClick: function(row) {
+				window.location.href = "/processes/" + row.ProcessId
+			}
+		}
+    });
+    axios.interceptors.response.use(function (response) {
+        return response;
+    }, function (error) {
+        $vue.$notify.error({
+            position: 'bottom-right',
+            title: error.message,
+            message: error.response
+        });
+        return error;
+    });
+</script>
+</html>
+	`))
 }
 
 type process struct {
@@ -46,6 +128,10 @@ func ping(respWriter http.ResponseWriter, request *http.Request) {
 		respWriter.Write([]byte(`{"errno": 1, "errmsg": "failed to unmarshal ping request"}`))
 		return
 	}
+	if proc.ProcessInfo == nil {
+		proc.ProcessInfo = map[string]interface{}{}
+	}
+	proc.ProcessInfo["ProcessId"] = proc.ProcessId
 	hijacker, _ := respWriter.(http.Hijacker)
 	if hijacker == nil {
 		countlog.Error("event!agent.failed to take hijacker", "err", err)
@@ -83,12 +169,23 @@ func ping(respWriter http.ResponseWriter, request *http.Request) {
 func listActiveProcesses(respWriter http.ResponseWriter, request *http.Request) {
 	activeProcessesMutex.Lock()
 	defer activeProcessesMutex.Unlock()
+	sortedPids := sort.IntSlice{}
+	for pid := range activeProcesses {
+		sortedPids = append(sortedPids, pid)
+	}
+	sort.Sort(sortedPids)
+	sortedProcesses := []map[string]interface{}{}
+	for _, pid := range sortedPids {
+		procInfo := activeProcesses[pid].ProcessInfo
+		procInfo["HeartbeatDelay"] = time.Now().Sub(procInfo["LastHeartbeat"].(time.Time)).String()
+		sortedProcesses = append(sortedProcesses, procInfo)
+	}
 	resp, err := json.Marshal(map[string]interface{}{
 		"errno": 0,
-		"data":  activeProcesses,
+		"data":  sortedProcesses,
 	})
 	if err != nil {
-		countlog.Error("event!agent.failed to active processes", "err", err)
+		countlog.Error("event!agent.failed to marshal active processes", "err", err)
 		respWriter.Write([]byte(`{"errno": 1, "errmsg": "can not marshal active processes"}`))
 		return
 	}
@@ -99,6 +196,7 @@ func updateActiveProcess(process process) {
 	activeProcessesMutex.Lock()
 	defer activeProcessesMutex.Unlock()
 	process.LastHeartbeat = time.Now()
+	process.ProcessInfo["LastHeartbeat"] = process.LastHeartbeat
 	activeProcesses[process.ProcessId] = process
 }
 
