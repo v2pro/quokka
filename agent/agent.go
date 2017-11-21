@@ -9,11 +9,16 @@ import (
 	"time"
 	"strings"
 	"sort"
+	"strconv"
+	"fmt"
+	"net"
+	"bytes"
 )
 
 var Mux = &http.ServeMux{}
 
 func init() {
+	Mux.HandleFunc("/processes/", proxyTunnel)
 	Mux.HandleFunc("/active-processes", listActiveProcesses)
 	Mux.HandleFunc("/ping", ping)
 	Mux.HandleFunc("/", homepage)
@@ -74,19 +79,21 @@ func homepage(respWriter http.ResponseWriter, request *http.Request) {
             return { processes: [] }
         },
 		created: function() {
-			var me = this;
-			setInterval(function() {
+			this.updateProcesses();
+			setInterval(this.updateProcesses, 3000);
+		},
+		methods: {
+			onRowClick: function(row) {
+				window.location.href = "/processes/" + row.ProcessId
+			},
+			updateProcesses: function() {
+				var me = this;
                 axios.get('/active-processes?ts=' + Date.now())
                     .then(function (resp) {
 						if (resp.data) {
 	                        me.processes = resp.data.data;
 						}
                     });
-			}, 3000);
-		},
-		methods: {
-			onRowClick: function(row) {
-				window.location.href = "/processes/" + row.ProcessId
 			}
 		}
     });
@@ -163,7 +170,6 @@ func ping(respWriter http.ResponseWriter, request *http.Request) {
 	resp := http.Response{}
 	resp.Body = ioutil.NopCloser(strings.NewReader(`{"errno": 0, "errmsg": "ok, now ping again"}`))
 	resp.Write(newWriter)
-	return
 }
 
 func listActiveProcesses(respWriter http.ResponseWriter, request *http.Request) {
@@ -190,6 +196,99 @@ func listActiveProcesses(respWriter http.ResponseWriter, request *http.Request) 
 		return
 	}
 	respWriter.Write(resp)
+}
+
+func proxyTunnel(respWriter http.ResponseWriter, req *http.Request) {
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		respWriter.Write([]byte("failed to read body: " + err.Error()))
+		return
+	}
+	req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+	req.Header.Set("Connection", "close")
+	path := strings.TrimLeft(req.URL.Path, "/")
+	slashPos := strings.LastIndexByte(path, '/')
+	if slashPos == -1 {
+		respWriter.Write([]byte("slash not found in path: " + path))
+		return
+	}
+	processId, err := strconv.Atoi(path[slashPos+1:])
+	if err != nil {
+		respWriter.Write([]byte("process id should be in the path: " + path))
+		return
+	}
+	activeProcessesMutex.Lock()
+	process, found := activeProcesses[processId]
+	activeProcessesMutex.Unlock()
+	if !found {
+		respWriter.Write([]byte(fmt.Sprintf("process is not active: %d", processId)))
+		return
+	}
+	tunnelAddr, _ := process.ProcessInfo["tunnel_addr"].(string)
+	if tunnelAddr == "" {
+		respWriter.Write([]byte("tunnel_addr not in process info"))
+		return
+	}
+	conn2, err := net.DialTimeout("tcp", tunnelAddr, time.Second)
+	if err != nil {
+		respWriter.Write([]byte("failed to connect tunnel: " + err.Error()))
+		return
+	}
+	defer conn2.Close()
+	countlog.Trace("event!agent.connected tunnel", "tunnelAddr", tunnelAddr)
+	err = req.Write(conn2)
+	if err != nil {
+		respWriter.Write([]byte("failed to repeat request: " + err.Error()))
+		return
+	}
+	hijacker, _ := respWriter.(http.Hijacker)
+	if hijacker == nil {
+		respWriter.Write([]byte("failed to take hijacker"))
+		return
+	}
+	conn1, readerWriter, err := hijacker.Hijack()
+	if err != nil {
+		respWriter.Write([]byte("failed to hijack: " + err.Error()))
+		return
+	}
+	defer conn1.Close()
+	go func() {
+		defer conn1.Close()
+		defer conn2.Close()
+		writeBuf := make([]byte, 4096)
+		for {
+			conn2.SetReadDeadline(time.Now().Add(time.Minute))
+			readCount, err := conn2.Read(writeBuf)
+			if err != nil {
+				return
+			}
+			conn1.SetWriteDeadline(time.Now().Add(time.Minute))
+			writeCount, err := readerWriter.Write(writeBuf[:readCount])
+			if err != nil {
+				return
+			}
+			readerWriter.Flush()
+			if writeCount != readCount {
+				return
+			}
+		}
+	}()
+	readBuf := make([]byte, 4096)
+	for {
+		conn1.SetReadDeadline(time.Now().Add(time.Minute))
+		readCount, err := readerWriter.Read(readBuf)
+		if err != nil {
+			return
+		}
+		conn2.SetWriteDeadline(time.Now().Add(time.Minute))
+		writeCount, err := conn2.Write(readBuf[:readCount])
+		if err != nil {
+			return
+		}
+		if writeCount != readCount {
+			return
+		}
+	}
 }
 
 func updateActiveProcess(process process) {
