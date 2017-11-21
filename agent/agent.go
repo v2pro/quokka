@@ -206,17 +206,18 @@ func proxyTunnel(respWriter http.ResponseWriter, req *http.Request) {
 	}
 	req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
 	req.Header.Set("Connection", "close")
-	path := strings.TrimLeft(req.URL.Path, "/")
-	slashPos := strings.LastIndexByte(path, '/')
+	path := req.URL.Path[len("/processes/"):]
+	slashPos := strings.IndexByte(path, '/')
 	if slashPos == -1 {
-		respWriter.Write([]byte("slash not found in path: " + path))
-		return
+		slashPos = len(path)
 	}
-	processId, err := strconv.Atoi(path[slashPos+1:])
+	processId, err := strconv.Atoi(path[:slashPos])
 	if err != nil {
 		respWriter.Write([]byte("process id should be in the path: " + path))
 		return
 	}
+	cut := len("/processes/") + slashPos
+	req.URL.Path = req.URL.Path[cut:]
 	activeProcessesMutex.Lock()
 	process, found := activeProcesses[processId]
 	activeProcessesMutex.Unlock()
