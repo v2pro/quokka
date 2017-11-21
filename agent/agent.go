@@ -16,6 +16,7 @@ func init() {
 	Mux.HandleFunc("/active-processes", listActiveProcesses)
 	Mux.HandleFunc("/ping", ping)
 	Mux.HandleFunc("/", homepage)
+	go gcActiveProcessesInBackground()
 }
 
 func homepage(respWriter http.ResponseWriter, request *http.Request) {
@@ -99,4 +100,42 @@ func updateActiveProcess(process process) {
 	defer activeProcessesMutex.Unlock()
 	process.LastHeartbeat = time.Now()
 	activeProcesses[process.ProcessId] = process
+}
+
+func gcActiveProcessesInBackground() {
+	defer func() {
+		recovered := recover()
+		if recovered != nil {
+			countlog.Fatal("event!agent.gcActiveProcessesInBackground.panic", "err", recovered,
+				"stacktrace", countlog.ProvideStacktrace)
+		}
+	}()
+	for {
+		time.Sleep(time.Second * 10)
+		gcActiveProcessesOneRound()
+	}
+}
+func gcActiveProcessesOneRound() {
+	defer func() {
+		recovered := recover()
+		if recovered != nil {
+			countlog.Fatal("event!agent.gcActiveProcessesOneRound.panic", "err", recovered,
+				"stacktrace", countlog.ProvideStacktrace)
+		}
+	}()
+	activeProcessesMutex.Lock()
+	defer activeProcessesMutex.Unlock()
+	now := time.Now()
+	newMap := map[int]process{}
+	expiredProcessesCount := 0
+	for processId, process := range activeProcesses {
+		if now.Sub(process.LastHeartbeat) < time.Second * 10 {
+			newMap[processId] = process
+		} else {
+			expiredProcessesCount++
+		}
+	}
+	activeProcesses = newMap
+	countlog.Trace("event!agent.gcActiveProcessesOneRound",
+		"expiredProcessesCount", expiredProcessesCount)
 }
