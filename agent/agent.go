@@ -106,9 +106,9 @@ func homepage(respWriter http.ResponseWriter, request *http.Request) {
 }
 
 type process struct {
-	ProcessId   int
-	ProcessInfo map[string]interface{} // more info about what the process is about
-	LastHeartbeat  time.Time
+	ProcessId     int
+	ProcessInfo   map[string]interface{} // more info about what the process is about
+	LastHeartbeat time.Time
 }
 
 var activeProcesses = map[int]process{}
@@ -195,6 +195,10 @@ func listActiveProcesses(respWriter http.ResponseWriter, request *http.Request) 
 func updateActiveProcess(process process) {
 	activeProcessesMutex.Lock()
 	defer activeProcessesMutex.Unlock()
+	if _, found := activeProcesses[process.ProcessId]; !found {
+		countlog.Info("event!agent.new process connected",
+			"processId", process.ProcessId, "processInfo", process.ProcessInfo)
+	}
 	process.LastHeartbeat = time.Now()
 	process.ProcessInfo["LastHeartbeat"] = process.LastHeartbeat
 	activeProcesses[process.ProcessId] = process
@@ -227,9 +231,11 @@ func gcActiveProcessesOneRound() {
 	newMap := map[int]process{}
 	expiredProcessesCount := 0
 	for processId, process := range activeProcesses {
-		if now.Sub(process.LastHeartbeat) < time.Second * 10 {
+		if now.Sub(process.LastHeartbeat) < time.Second*10 {
 			newMap[processId] = process
 		} else {
+			countlog.Info("event!agent.process no long active",
+				"processId", process.ProcessId, "processInfo", process.ProcessInfo)
 			expiredProcessesCount++
 		}
 	}
