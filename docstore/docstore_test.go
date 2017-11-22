@@ -37,6 +37,7 @@ func Test_get_object(t *testing.T) {
 }
 
 func reset(entityType string) *Store {
+	resetMemKVStore()
 	stores = map[string]*Store{}
 	return AddStore(entityType)
 }
