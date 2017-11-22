@@ -1,4 +1,4 @@
-package model
+package runtime
 
 import (
 	"github.com/json-iterator/go"
@@ -29,6 +29,15 @@ func init() {
 
 type DObject struct {
 	data map[string]interface{}
+	updated map[string]interface{}
+	patched map[string]interface{}
+	removed map[string]interface{}
+}
+
+func NewObject() *DObject {
+	return &DObject{
+		data: map[string]interface{}{},
+	}
 }
 
 type DArray struct {

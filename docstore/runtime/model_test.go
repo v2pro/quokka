@@ -1,4 +1,4 @@
-package model
+package runtime
 
 import (
 	"testing"
