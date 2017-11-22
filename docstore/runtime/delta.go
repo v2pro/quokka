@@ -16,12 +16,24 @@ func init() {
 	deltaJson.RegisterExtension(&deltaJsonExtension{})
 }
 
-func (obj *DObject) Update(key string, value interface{}) {
-	obj.data[key] = value
+type Object interface {
+	Set(key interface{}, value interface{})
+}
+
+func AsObj(debugInfo string, val interface{}) Object {
+	obj, success := val.(Object)
+	if success {
+		return obj
+	}
+	panic(debugInfo + ": can not cast " + reflect.TypeOf(val).String())
+}
+
+func (obj *DObject) Set(key interface{}, value interface{}) {
+	obj.data[key.(string)] = value
 	if obj.updated == nil {
 		obj.updated = map[string]interface{}{}
 	}
-	obj.updated[key] = value
+	obj.updated[key.(string)] = value
 }
 
 func (obj *DObject) isDirty() bool {
