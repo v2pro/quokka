@@ -100,8 +100,8 @@ func (encoder *objectDeltaEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.S
 	stream.WriteObjectStart()
 	if obj.updated != nil {
 		stream.WriteObjectField("__updated__")
-		subStream := json.BorrowStream(nil) // update is not in delta format
-		defer json.ReturnStream(subStream)
+		subStream := Json.BorrowStream(nil) // update is not in delta format
+		defer Json.ReturnStream(subStream)
 		subStream.WriteVal(obj.updated)
 		stream.Write(subStream.Buffer())
 		isFirstField = false
@@ -128,8 +128,8 @@ func (decoder *objectDeltaDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Ite
 		case "__updated__":
 			iter.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
 				input := iter.SkipAndReturnBytes()
-				subIter := json.BorrowIterator(input) // switch from deltaJson to json
-				defer json.ReturnIterator(subIter)
+				subIter := Json.BorrowIterator(input) // switch from deltaJson to Json
+				defer Json.ReturnIterator(subIter)
 				obj.data[field] = subIter.Read()
 				return true
 			})

@@ -15,13 +15,13 @@ import (
 // *DArray
 // *DObject
 
-var json = jsoniter.Config{
+var Json = jsoniter.Config{
 	EscapeHTML:                    false,
 	MarshalFloatWith6Digits:       true, // will lose precession
 	ObjectFieldMustBeSimpleString: true, // do not unescape object field
 }.Froze()
 
-var debugJson = jsoniter.Config{
+var DebugJson = jsoniter.Config{
 	EscapeHTML:                    false,
 	MarshalFloatWith6Digits:       true, // will lose precession
 	ObjectFieldMustBeSimpleString: true, // do not unescape object field
@@ -33,8 +33,8 @@ var dobjectType = reflect.TypeOf((*DObject)(nil)).Elem()
 var darrayType = reflect.TypeOf((*DArray)(nil)).Elem()
 
 func init() {
-	json.RegisterExtension(&jsonExtension{})
-	debugJson.RegisterExtension(&jsonExtension{})
+	Json.RegisterExtension(&jsonExtension{})
+	DebugJson.RegisterExtension(&jsonExtension{})
 }
 
 type DObject struct {
@@ -109,19 +109,19 @@ func (decoder *emptyInterfaceDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.
 		*(*interface{})(ptr) = nil
 	case jsoniter.NumberValue:
 		number := iter.SkipAndReturnBytes()
-		subIter := json.BorrowIterator(number)
+		subIter := Json.BorrowIterator(number)
 		intVal := subIter.ReadInt64()
 		if subIter.Error == io.EOF {
-			json.ReturnIterator(subIter)
+			Json.ReturnIterator(subIter)
 			*(*interface{})(ptr) = intVal
 		} else {
-			json.ReturnIterator(subIter)
-			subIter = json.BorrowIterator(number)
+			Json.ReturnIterator(subIter)
+			subIter = Json.BorrowIterator(number)
 			*(*interface{})(ptr) = subIter.ReadFloat64()
 			if subIter.Error != nil && subIter.Error != io.EOF {
 				iter.ReportError("readNumber", subIter.Error.Error())
 			}
-			json.ReturnIterator(subIter)
+			Json.ReturnIterator(subIter)
 		}
 	default:
 		iter.ReportError("readEmptyInterface", fmt.Sprintf("unexpected value type: %v", nextValueType))

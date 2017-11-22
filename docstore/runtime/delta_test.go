@@ -6,12 +6,12 @@ import (
 )
 
 func clone(obj interface{}) interface{} {
-	encoded, err := json.Marshal(obj)
+	encoded, err := Json.Marshal(obj)
 	if err != nil {
 		panic(err)
 	}
 	var cloned interface{}
-	err = json.Unmarshal(encoded, &cloned)
+	err = Json.Unmarshal(encoded, &cloned)
 	if err != nil {
 		panic(err)
 	}
@@ -19,8 +19,8 @@ func clone(obj interface{}) interface{} {
 }
 
 func dump(obj interface{}) string {
-	// debugJson sorts map key, so it is stable to compare
-	encoded, err := debugJson.MarshalToString(obj)
+	// DebugJson sorts map key, so it is stable to compare
+	encoded, err := DebugJson.MarshalToString(obj)
 	if err != nil {
 		panic(err)
 	}
