@@ -2,7 +2,7 @@ package kvstore
 
 import "errors"
 
-var Partitions = []string{}
+const PartitionsCount = 997
 var KeyConflictError = errors.New("key conflict")
 
 type Row struct {
@@ -11,15 +11,15 @@ type Row struct {
 }
 type RowIterator func() ([]Row, error)
 
-var Get = func(partition string, rowKey uint64) ([]byte, error) {
+var Get = func(partition uint64, rowKey uint64) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
-var Scan = func(partition string, fromRowKey uint64) (RowIterator, error) {
+var Scan = func(partition uint64, fromRowKey uint64) (RowIterator, error) {
 	return nil, errors.New("not implemented")
 }
 
-var Append = func(partition string, rowKey uint64, rowValue []byte) error {
+var Append = func(partition uint64, rowKey uint64, rowValue []byte) error {
 	return errors.New("not implemented")
 }
 

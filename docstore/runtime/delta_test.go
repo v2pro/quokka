@@ -35,10 +35,10 @@ func Test_update_root(t *testing.T) {
 	obj.Update("hello", "world")
 	should.Equal("world", obj.data["hello"])
 	should.Equal("world", obj.updated["hello"])
-	delta, err := deltaJson.MarshalToString(obj)
+	delta, err := DeltaJson.MarshalToString(obj)
 	should.Nil(err)
 	should.Equal(`{"__updated__":{"hello":"world"}}`, delta)
-	should.Nil(deltaJson.UnmarshalFromString(delta, &origObj))
+	should.Nil(DeltaJson.UnmarshalFromString(delta, &origObj))
 	should.Equal(dump(obj), dump(origObj))
 }
 
@@ -50,9 +50,9 @@ func Test_patch_one_level(t *testing.T) {
 	root.data["leaf"] = leaf
 	origRoot := clone(root)
 	leaf.Update("hello", "world")
-	delta, err := deltaJson.MarshalToString(root)
+	delta, err := DeltaJson.MarshalToString(root)
 	should.Nil(err)
 	should.Equal(`{"__patched__":{"leaf":{"__updated__":{"hello":"world"}}}}`, delta)
-	should.Nil(deltaJson.UnmarshalFromString(delta, &origRoot))
+	should.Nil(DeltaJson.UnmarshalFromString(delta, &origRoot))
 	should.Equal(dump(root), dump(origRoot))
 }

@@ -6,14 +6,14 @@ import (
 	"unsafe"
 )
 
-var deltaJson = jsoniter.Config{
+var DeltaJson = jsoniter.Config{
 	EscapeHTML:                    false,
 	MarshalFloatWith6Digits:       true, // will lose precession
 	ObjectFieldMustBeSimpleString: true, // do not unescape object field
 }.Froze()
 
 func init() {
-	deltaJson.RegisterExtension(&deltaJsonExtension{})
+	DeltaJson.RegisterExtension(&deltaJsonExtension{})
 }
 
 type Object interface {
@@ -128,7 +128,7 @@ func (decoder *objectDeltaDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Ite
 		case "__updated__":
 			iter.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
 				input := iter.SkipAndReturnBytes()
-				subIter := Json.BorrowIterator(input) // switch from deltaJson to Json
+				subIter := Json.BorrowIterator(input) // switch from DeltaJson to Json
 				defer Json.ReturnIterator(subIter)
 				obj.data[field] = subIter.Read()
 				return true
