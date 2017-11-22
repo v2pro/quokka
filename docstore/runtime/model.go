@@ -21,14 +21,24 @@ var json = jsoniter.Config{
 	ObjectFieldMustBeSimpleString: true, // do not unescape object field
 }.Froze()
 
+var debugJson = jsoniter.Config{
+	EscapeHTML:                    false,
+	MarshalFloatWith6Digits:       true, // will lose precession
+	ObjectFieldMustBeSimpleString: true, // do not unescape object field
+	SortMapKeys:                   true,
+}.Froze()
+
 var emptyInterfaceType = reflect.TypeOf((*interface{})(nil)).Elem()
+var dobjectType = reflect.TypeOf((*DObject)(nil)).Elem()
+var darrayType = reflect.TypeOf((*DArray)(nil)).Elem()
 
 func init() {
 	json.RegisterExtension(&jsonExtension{})
+	debugJson.RegisterExtension(&jsonExtension{})
 }
 
 type DObject struct {
-	data map[string]interface{}
+	data    map[string]interface{}
 	updated map[string]interface{}
 	patched map[string]interface{}
 	removed map[string]interface{}
@@ -44,6 +54,18 @@ type DArray struct {
 	data []interface{}
 }
 
+func Get(obj interface{}, path ...interface{}) interface{} {
+	for _, elem := range path {
+		switch typedElem := elem.(type) {
+		case int:
+			obj = obj.(*DArray).data[typedElem]
+		case string:
+			obj = obj.(*DObject).data[typedElem]
+		}
+	}
+	return obj
+}
+
 type jsonExtension struct {
 	jsoniter.DummyExtension
 }
@@ -51,6 +73,15 @@ type jsonExtension struct {
 func (extension *jsonExtension) CreateDecoder(typ reflect.Type) jsoniter.ValDecoder {
 	if typ == emptyInterfaceType {
 		return &emptyInterfaceDecoder{}
+	}
+	return nil
+}
+
+func (extension *jsonExtension) CreateEncoder(typ reflect.Type) jsoniter.ValEncoder {
+	if typ == dobjectType {
+		return &objectEncoder{}
+	} else if typ == darrayType {
+		return &arrayEncoder{}
 	}
 	return nil
 }
@@ -97,14 +128,34 @@ func (decoder *emptyInterfaceDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.
 	}
 }
 
-func Get(obj interface{}, path ...interface{}) interface{} {
-	for _, elem := range path {
-		switch typedElem := elem.(type) {
-		case int:
-			obj = obj.(*DArray).data[typedElem]
-		case string:
-			obj = obj.(*DObject).data[typedElem]
-		}
-	}
-	return obj
+type objectEncoder struct {
+}
+
+func (encoder *objectEncoder) IsEmpty(ptr unsafe.Pointer) bool {
+	return false
+}
+
+func (encoder *objectEncoder) EncodeInterface(val interface{}, stream *jsoniter.Stream) {
+	jsoniter.WriteToStream(val, stream, encoder)
+}
+
+func (encoder *objectEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	obj := (*DObject)(ptr)
+	stream.WriteVal(obj.data)
+}
+
+type arrayEncoder struct {
+}
+
+func (encoder *arrayEncoder) IsEmpty(ptr unsafe.Pointer) bool {
+	return false
+}
+
+func (encoder *arrayEncoder) EncodeInterface(val interface{}, stream *jsoniter.Stream) {
+	jsoniter.WriteToStream(val, stream, encoder)
+}
+
+func (encoder *arrayEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	obj := (*DArray)(ptr)
+	stream.WriteVal(obj.data)
 }
