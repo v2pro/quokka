@@ -6,6 +6,7 @@ import (
 	"github.com/v2pro/quokka/docstore/runtime"
 	"errors"
 	"github.com/v2pro/quokka/kvstore"
+	"github.com/v2pro/plz/countlog"
 )
 
 type event struct {
@@ -133,10 +134,16 @@ func Exec(entityType string, commandType string, entityId string, commandId stri
 	if err != nil {
 		return replyError(err)
 	}
-	err = kvstore.Append(ent.partition, ent.partitionVersion+1, encodedEvent)
+	partitionVersion := ent.partitionVersion+1
+	err = kvstore.Append(ent.partition, partitionVersion, encodedEvent)
 	if err != nil {
 		return replyError(err)
 	}
+	countlog.Trace("event!docstore.stored event",
+		"partition", ent.partition,
+		"partitionVersion", partitionVersion,
+		"encodedEvent", encodedEvent)
+	setEventId(ent.partition, partitionVersion, entityId)
 	return replySuccess(encodedResp)
 }
 

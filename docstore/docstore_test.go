@@ -5,6 +5,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/json-iterator/go"
 	"github.com/v2pro/quokka/docstore/runtime"
+	"github.com/v2pro/quokka/kvstore"
 )
 
 func Test_create_object(t *testing.T) {
@@ -13,9 +14,14 @@ func Test_create_object(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return "hello"
 		})
-	resp := Exec("user", "create", newID().String(), "", []byte(`{}`))
+	entityId := newID().String()
+	resp := Exec("user", "create", entityId, "", []byte(`{}`))
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
 	should.Equal("hello", jsoniter.Get(resp, "data").ToString())
+	partition := hashToPartition(entityId)
+	should.True(jsoniter.Get(debugGet(partition, 1), "State").ToBool())
+	eventId, _ := getEventId(partition, entityId)
+	should.Equal(uint64(1), eventId)
 }
 
 func Test_get_object(t *testing.T) {
@@ -30,14 +36,23 @@ func Test_get_object(t *testing.T) {
 		})
 
 	docId := newID().String()
-	Exec("user", "create", docId, "", []byte(`null`))
-	resp := Exec("user", "get", docId, "", []byte(`null`))
+	resp := Exec("user", "create", docId, "", []byte(`null`))
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
-	should.Equal("hello", jsoniter.Get(resp, "data").ToString())
+	resp = Exec("user", "get", docId, "", []byte(`null`))
+	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
+	should.Equal("world", jsoniter.Get(resp, "data", "hello").ToString())
 }
 
 func reset(entityType string) *Store {
 	resetMemKVStore()
 	stores = map[string]*Store{}
 	return AddStore(entityType)
+}
+
+func debugGet(partition uint64, rowKey uint64) []byte {
+	row, err := kvstore.Get(partition, rowKey)
+	if err != nil {
+		panic(err)
+	}
+	return row
 }

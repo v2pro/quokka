@@ -5,6 +5,8 @@ import (
 	"github.com/json-iterator/go"
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/spaolacci/murmur3"
+	"github.com/v2pro/plz/countlog"
+	"errors"
 )
 
 var eventJson = jsoniter.Config{
@@ -16,19 +18,43 @@ var eventJson = jsoniter.Config{
 func loadEntity(entityType string, entityId string) (*entity, error) {
 	partition := hashToPartition(entityId)
 	eventId, partitionVersion := getEventId(partition, entityId)
+	if eventId == 0 {
+		countlog.Trace("event!backtrace.can not find event for entity",
+			"partition", partition,
+			"entityType", entityType,
+			"entityId", entityId)
+	}
 	encodedEvent, err := kvstore.Get(partition, eventId)
 	if err != nil {
+		countlog.Trace("event!backtrace.event not found",
+			"err", err,
+			"entityType", entityType,
+			"entityId", entityId,
+			"partition", partition,
+			"eventId", eventId)
 		return nil, err
 	}
 	var event partialEvent
 	if err = eventJson.Unmarshal(encodedEvent, &event); err != nil {
+		countlog.Trace("event!backtrace.failed to unmarshal event",
+			"err", err,
+			"partition", partition,
+			"eventId", eventId,
+			"encodedEvent", encodedEvent)
 		return nil, err
 	}
 	version := event.Version
 	baseEventId := eventId
 	var deltas [][]byte
-	for event.State != nil {
+	for event.State == nil {
 		deltas = append(deltas, event.Delta)
+		if event.BaseEventId == 0 {
+			countlog.Error("event!backtrace.can not find event with state",
+				"partition", partition,
+				"baseEventId", baseEventId,
+				"deltas", deltas)
+			return nil, errors.New("state not found")
+		}
 		encodedEvent, err = kvstore.Get(partition, event.BaseEventId)
 		if err != nil {
 			return nil, err
