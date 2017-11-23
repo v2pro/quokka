@@ -7,6 +7,10 @@ import (
 	"errors"
 	"github.com/v2pro/quokka/kvstore"
 	"github.com/v2pro/plz/countlog"
+	"net/http"
+	"io/ioutil"
+	"github.com/json-iterator/go"
+	"encoding/json"
 )
 
 type event struct {
@@ -26,6 +30,11 @@ type Handler func(doc interface{}, request interface{}) (resp interface{})
 
 var stores = map[string]*Store{}
 var storesMutex = &sync.Mutex{}
+var Mux = &http.ServeMux{}
+
+func init() {
+	Mux.HandleFunc("/docstore/exec", httpExec)
+}
 
 type Store struct {
 	handlers      map[string]Handler
@@ -65,11 +74,39 @@ func getStore(entityType string) *Store {
 	return stores[entityType]
 }
 
-func Exec(entityType string, commandType string, entityId string, commandId string, req []byte) []byte {
-	var reqObj interface{}
-	err := runtime.Json.Unmarshal(req, &reqObj)
+func httpExec(respWriter http.ResponseWriter, req *http.Request) {
+	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		return replyError(err)
+		respWriter.Write(replyError(err))
+		return
+	}
+	var reqObj httpExecRequest
+	err = jsoniter.Unmarshal(body, &reqObj)
+	if err != nil {
+		respWriter.Write(replyError(err))
+		return
+	}
+	commandResp := exec(reqObj.EntityType, reqObj.CommandType, reqObj.EntityId, reqObj.CommandId, reqObj.CommandRequest)
+	respWriter.Write(commandResp)
+	return
+}
+
+type httpExecRequest struct {
+	EntityType string
+	CommandType string
+	EntityId string
+	CommandId string
+	CommandRequest json.RawMessage
+}
+
+func exec(entityType string, commandType string, entityId string, commandId string, req []byte) []byte {
+	var reqObj interface{}
+	var err error
+	if len(req) > 0 {
+		err = runtime.Json.Unmarshal(req, &reqObj)
+		if err != nil {
+			return replyError(err)
+		}
 	}
 	store := getStore(entityType)
 	if store == nil {
@@ -157,5 +194,5 @@ func replySuccess(encodedResp []byte) []byte {
 }
 
 func replyError(err error) []byte {
-	panic(err)
+	return append(append([]byte(`{"errno":1,"errmsg":"`), err.Error()...), `"}`...)
 }

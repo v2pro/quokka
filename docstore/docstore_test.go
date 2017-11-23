@@ -15,7 +15,7 @@ func Test_create_object(t *testing.T) {
 			return "hello"
 		})
 	entityId := newID().String()
-	resp := Exec("user", "create", entityId, "", []byte(`{}`))
+	resp := exec("user", "create", entityId, "", []byte(`{}`))
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
 	should.Equal("hello", jsoniter.Get(resp, "data").ToString())
 	partition := hashToPartition(entityId)
@@ -36,9 +36,9 @@ func Test_get_object(t *testing.T) {
 		})
 
 	docId := newID().String()
-	resp := Exec("user", "create", docId, "", []byte(`null`))
+	resp := exec("user", "create", docId, "", []byte(`null`))
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
-	resp = Exec("user", "get", docId, "", []byte(`null`))
+	resp = exec("user", "get", docId, "", []byte(`null`))
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
 	should.Equal("world", jsoniter.Get(resp, "data", "hello").ToString())
 }
