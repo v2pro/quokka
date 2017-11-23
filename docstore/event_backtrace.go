@@ -15,8 +15,7 @@ var eventJson = jsoniter.Config{
 	ObjectFieldMustBeSimpleString: true, // do not unescape object field
 }.Froze()
 
-func loadEntity(entityType string, entityId string) (*entity, error) {
-	partition := hashToPartition(entityId)
+func loadEntity(partition uint64, entityType string, entityId string) (*entity, error) {
 	eventId, partitionVersion := getEventId(partition, entityId)
 	if eventId == 0 {
 		countlog.Trace("event!backtrace.can not find event for entity",

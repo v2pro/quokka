@@ -11,6 +11,9 @@ import (
 	"io/ioutil"
 	"github.com/json-iterator/go"
 	"encoding/json"
+	"net"
+	"context"
+	"fmt"
 )
 
 type event struct {
@@ -80,18 +83,20 @@ func httpExec(respWriter http.ResponseWriter, req *http.Request) {
 		respWriter.Write(replyError(err))
 		return
 	}
-	var reqObj httpExecRequest
+	var reqObj execRequest
 	err = jsoniter.Unmarshal(body, &reqObj)
 	if err != nil {
 		respWriter.Write(replyError(err))
 		return
 	}
-	commandResp := exec(reqObj.EntityType, reqObj.CommandType, reqObj.EntityId, reqObj.CommandId, reqObj.CommandRequest)
+	ctx := req.Context()
+	localAddr := ctx.Value(http.LocalAddrContextKey)
+	commandResp := exec(ctx, localAddr.(*net.TCPAddr), &reqObj)
 	respWriter.Write(commandResp)
 	return
 }
 
-type httpExecRequest struct {
+type execRequest struct {
 	EntityType string
 	CommandType string
 	EntityId string
@@ -99,9 +104,25 @@ type httpExecRequest struct {
 	CommandRequest json.RawMessage
 }
 
-func exec(entityType string, commandType string, entityId string, commandId string, req []byte) []byte {
+func exec(ctx context.Context, localAddr *net.TCPAddr, execReq *execRequest) []byte {
+	entityId := execReq.EntityId
+	req := execReq.CommandRequest
+	entityType := execReq.EntityType
+	commandType := execReq.CommandType
+	commandId := execReq.CommandId
+	partition := hashToPartition(entityId)
+	master, err := getMaster(partition)
+	fmt.Println(localAddr, master)
+	if err != nil {
+		return replyError(err)
+	}
+	if localAddr == nil {
+		return replyError(errors.New("missing local addr"))
+	}
+	if !master.IP.Equal(localAddr.IP) || master.Port != localAddr.Port {
+		return replyError(errors.New("not master"))
+	}
 	var reqObj interface{}
-	var err error
 	if len(req) > 0 {
 		err = runtime.Json.Unmarshal(req, &reqObj)
 		if err != nil {
@@ -119,7 +140,6 @@ func exec(entityType string, commandType string, entityId string, commandId stri
 	var ent *entity
 	var version uint64
 	if "create" == commandType {
-		partition := hashToPartition(entityId)
 		eventId, partitionVersion := getEventId(partition, entityId)
 		if eventId != 0 {
 			return replyError(errors.New("entity with same id found"))
@@ -135,7 +155,7 @@ func exec(entityType string, commandType string, entityId string, commandId stri
 		}
 
 	} else {
-		ent, err = loadEntity(entityType, entityId)
+		ent, err = loadEntity(partition, entityType, entityId)
 		if err != nil {
 			return replyError(err)
 		}
@@ -194,5 +214,14 @@ func replySuccess(encodedResp []byte) []byte {
 }
 
 func replyError(err error) []byte {
-	return append(append([]byte(`{"errno":1,"errmsg":"`), err.Error()...), `"}`...)
+	stream := jsoniter.ConfigFastest.BorrowStream(nil)
+	defer jsoniter.ConfigFastest.ReturnStream(stream)
+	stream.WriteObjectStart()
+	stream.WriteObjectField("errno")
+	stream.WriteVal(1)
+	stream.WriteMore()
+	stream.WriteObjectField("errmsg")
+	stream.WriteString(err.Error())
+	stream.WriteObjectEnd()
+	return stream.Buffer()
 }
