@@ -12,8 +12,6 @@ import (
 	"github.com/json-iterator/go"
 	"encoding/json"
 	"net"
-	"context"
-	"fmt"
 )
 
 type event struct {
@@ -90,8 +88,22 @@ func httpExec(respWriter http.ResponseWriter, req *http.Request) {
 		return
 	}
 	ctx := req.Context()
-	localAddr := ctx.Value(http.LocalAddrContextKey)
-	commandResp := exec(ctx, localAddr.(*net.TCPAddr), &reqObj)
+	localAddr, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
+	partition := hashToPartition(reqObj.EntityId)
+	master, err := getMaster(partition)
+	if err != nil {
+		respWriter.Write(replyError(err))
+		return
+	}
+	if localAddr == nil {
+		respWriter.Write(replyError(errors.New("missing local addr")))
+		return
+	}
+	if !master.IP.Equal(localAddr.IP) || master.Port != localAddr.Port {
+		respWriter.Write(forwardToMaster(master, body))
+		return
+	}
+	commandResp := exec(partition, &reqObj)
 	respWriter.Write(commandResp)
 	return
 }
@@ -104,25 +116,14 @@ type execRequest struct {
 	CommandRequest json.RawMessage
 }
 
-func exec(ctx context.Context, localAddr *net.TCPAddr, execReq *execRequest) []byte {
+func exec(partition uint64, execReq *execRequest) []byte {
 	entityId := execReq.EntityId
 	req := execReq.CommandRequest
 	entityType := execReq.EntityType
 	commandType := execReq.CommandType
 	commandId := execReq.CommandId
-	partition := hashToPartition(entityId)
-	master, err := getMaster(partition)
-	fmt.Println(localAddr, master)
-	if err != nil {
-		return replyError(err)
-	}
-	if localAddr == nil {
-		return replyError(errors.New("missing local addr"))
-	}
-	if !master.IP.Equal(localAddr.IP) || master.Port != localAddr.Port {
-		return replyError(errors.New("not master"))
-	}
 	var reqObj interface{}
+	var err error
 	if len(req) > 0 {
 		err = runtime.Json.Unmarshal(req, &reqObj)
 		if err != nil {

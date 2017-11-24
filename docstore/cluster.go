@@ -8,8 +8,16 @@ import (
 	"errors"
 	"github.com/json-iterator/go"
 	"github.com/v2pro/plz/countlog"
+	"net/http"
+	"bytes"
+	"io/ioutil"
 )
 
+type partitionServers struct {
+	mutex  *sync.Mutex
+	Master *net.TCPAddr
+	Slaves []*net.TCPAddr
+}
 var cluster []*partitionServers
 
 func init() {
@@ -28,7 +36,7 @@ func getMaster(partition uint64) (*net.TCPAddr, error) {
 	var err error
 	servers := cluster[partition]
 	if servers.Master == nil {
-		servers, err = refreshPartition(partition)
+		servers, err = refreshPartitionServers(partition)
 		if err != nil {
 			return nil, err
 		}
@@ -36,13 +44,34 @@ func getMaster(partition uint64) (*net.TCPAddr, error) {
 	return servers.Master, nil
 }
 
-type partitionServers struct {
-	mutex  *sync.Mutex
-	Master *net.TCPAddr
-	Slaves []*net.TCPAddr
+func forwardToMaster(master *net.TCPAddr, execReq []byte) []byte {
+	url := fmt.Sprintf("http://%s:%d/docstore/exec", master.IP.String(), master.Port)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(execReq))
+	if err != nil {
+		return replyError(err)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return replyError(err)
+	}
+	iter := jsoniter.ConfigFastest.BorrowIterator(body)
+	defer jsoniter.ConfigFastest.ReturnIterator(iter)
+	stream := jsoniter.ConfigFastest.BorrowStream(nil)
+	defer jsoniter.ConfigFastest.ReturnStream(stream)
+	stream.WriteObjectStart()
+	iter.ReadObjectCB(func(iter *jsoniter.Iterator, field string) bool {
+		stream.WriteObjectField(field)
+		stream.Write(iter.SkipAndReturnBytes())
+		stream.WriteMore()
+		return true
+	})
+	stream.WriteObjectField("hint_master")
+	stream.WriteVal(master)
+	stream.WriteObjectEnd()
+	return stream.Buffer()
 }
 
-func refreshPartition(partition uint64) (*partitionServers, error) {
+func refreshPartitionServers(partition uint64) (*partitionServers, error) {
 	metadataKey := fmt.Sprintf("partition_%v_servers", partition)
 	encodedServers, err := kvstore.GetMetadata(metadataKey)
 	if err != nil {
@@ -75,4 +104,27 @@ func refreshPartition(partition uint64) (*partitionServers, error) {
 		return nil, errors.New("master unknown")
 	}
 	return servers, nil
+}
+
+func setPartitionServers(partition uint64, servers *partitionServers) error {
+	metadataKey := fmt.Sprintf("partition_%v_servers", partition)
+	encodedServers, err := jsoniter.Marshal(servers)
+	if err != nil {
+		countlog.Error("event!cluster.failed to marshal partition servers metadata",
+			"err", err,
+			"partition", partition,
+			"metadataKey", metadataKey,
+			"encodedServers", encodedServers)
+		return fmt.Errorf("failed to marshal partition servers metadata: %s", err.Error())
+	}
+	err = kvstore.SetMetadata(metadataKey, encodedServers)
+	if err != nil {
+		countlog.Error("event!cluster.failed to set servers",
+			"err", err,
+			"metadataKey", metadataKey,
+			"encodedServers", encodedServers,
+			"partition", partition)
+		return err
+	}
+	return nil
 }

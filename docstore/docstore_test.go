@@ -6,14 +6,7 @@ import (
 	"github.com/json-iterator/go"
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/v2pro/quokka/kvstore"
-	"context"
-	"net"
 )
-
-var fakeMasterAddr = &net.TCPAddr{
-	IP: net.IPv4(127, 127,127, 127),
-	Port: 127,
-}
 
 func Test_create_object(t *testing.T) {
 	should := require.New(t)
@@ -22,10 +15,10 @@ func Test_create_object(t *testing.T) {
 			return "hello"
 		})
 	entityId := newID().String()
-	resp := exec(context.TODO(),fakeMasterAddr, &execRequest{
-		EntityType: "user",
+	resp := exec(0, &execRequest{
+		EntityType:  "user",
 		CommandType: "create",
-		EntityId: entityId,
+		EntityId:    entityId,
 	})
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
 	should.Equal("hello", jsoniter.Get(resp, "data").ToString())
@@ -47,16 +40,16 @@ func Test_get_object(t *testing.T) {
 		})
 
 	entityId := newID().String()
-	resp := exec(context.TODO(), fakeMasterAddr, &execRequest{
-		EntityType: "user",
+	resp := exec(0, &execRequest{
+		EntityType:  "user",
 		CommandType: "create",
-		EntityId: entityId,
+		EntityId:    entityId,
 	})
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
-	resp = exec(context.TODO(), fakeMasterAddr,&execRequest{
-		EntityType: "user",
+	resp = exec(0, &execRequest{
+		EntityType:  "user",
 		CommandType: "get",
-		EntityId: entityId,
+		EntityId:    entityId,
 	})
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
 	should.Equal("world", jsoniter.Get(resp, "data", "hello").ToString())

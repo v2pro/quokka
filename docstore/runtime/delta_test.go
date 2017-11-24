@@ -3,6 +3,7 @@ package runtime
 import (
 	"testing"
 	"github.com/stretchr/testify/require"
+	"fmt"
 )
 
 func clone(obj interface{}) interface{} {
@@ -32,7 +33,7 @@ func Test_update_root(t *testing.T) {
 	obj := NewObject()
 	obj.data["origKey"] = "origValue"
 	origObj := clone(obj)
-	obj.Update("hello", "world")
+	obj.Set("hello", "world")
 	should.Equal("world", obj.data["hello"])
 	should.Equal("world", obj.updated["hello"])
 	delta, err := DeltaJson.MarshalToString(obj)
@@ -49,10 +50,12 @@ func Test_patch_one_level(t *testing.T) {
 	leaf.data["origKey"] = "origValue"
 	root.data["leaf"] = leaf
 	origRoot := clone(root)
-	leaf.Update("hello", "world")
+	leaf.Set("hello", "world")
 	delta, err := DeltaJson.MarshalToString(root)
 	should.Nil(err)
 	should.Equal(`{"__patched__":{"leaf":{"__updated__":{"hello":"world"}}}}`, delta)
+	fmt.Println(dump(origRoot))
 	should.Nil(DeltaJson.UnmarshalFromString(delta, &origRoot))
+	fmt.Println(dump(origRoot))
 	should.Equal(dump(root), dump(origRoot))
 }

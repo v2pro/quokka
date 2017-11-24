@@ -99,7 +99,7 @@ func (encoder *objectDeltaEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.S
 	isFirstField := true
 	stream.WriteObjectStart()
 	if obj.updated != nil {
-		stream.WriteObjectField("__updated__")
+		stream.WriteObjectField("u")
 		subStream := Json.BorrowStream(nil) // update is not in delta format
 		defer Json.ReturnStream(subStream)
 		subStream.WriteVal(obj.updated)
@@ -112,7 +112,7 @@ func (encoder *objectDeltaEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.S
 			stream.WriteMore()
 		}
 		isFirstField = false
-		stream.WriteObjectField("__patched__")
+		stream.WriteObjectField("p")
 		stream.WriteVal(patched)
 	}
 	stream.WriteObjectEnd()
@@ -125,7 +125,7 @@ func (decoder *objectDeltaDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Ite
 	obj := (*DObject)(ptr)
 	iter.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
 		switch field {
-		case "__updated__":
+		case "u":
 			iter.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
 				input := iter.SkipAndReturnBytes()
 				subIter := Json.BorrowIterator(input) // switch from DeltaJson to Json
@@ -133,7 +133,7 @@ func (decoder *objectDeltaDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Ite
 				obj.data[field] = subIter.Read()
 				return true
 			})
-		case "__patched__":
+		case "p":
 			iter.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
 				fieldValue := obj.data[field]
 				iter.ReadVal(&fieldValue)
