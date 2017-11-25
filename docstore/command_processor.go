@@ -43,17 +43,22 @@ type commandCache struct {
 func init() {
 	for i := 0; i < len(commandProcessors); i++ {
 		partition := uint64(i)
-		processor :=&commandProcessor{
-			partition:     partition,
-			reqChan:       make(chan *command),
-			entityLookup:  newEntityLookup(),
-			commandLookup: newCommandLookup(),
-		}
-		processor.lookupSyncer = newEventProcessor(partition, processor)
+		processor := newCommandProcessor(partition)
 		go processor.executeInBackground()
 		go processor.lookupSyncer.syncInBackground()
 		commandProcessors[i] = processor
 	}
+}
+
+func newCommandProcessor(partition uint64) *commandProcessor {
+	processor := &commandProcessor{
+		partition:     partition,
+		reqChan:       make(chan *command),
+		entityLookup:  newEntityLookup(),
+		commandLookup: newCommandLookup(),
+	}
+	processor.lookupSyncer = newEventProcessor(partition, processor)
+	return processor
 }
 
 func (processor *commandProcessor) executeInBackground() {
@@ -125,7 +130,7 @@ func (processor *commandProcessor) exec(execReq *command) []byte {
 	var version uint64
 	if "create" == commandType {
 		_, err := processor.entityLookup.getEntity(partition, entityType, entityId)
-		if err != nil {
+		if err == nil {
 			return replyError(errors.New("entity with same id found"))
 		}
 		ent = &entity{
@@ -178,7 +183,7 @@ func (processor *commandProcessor) exec(execReq *command) []byte {
 	}
 	countlog.Trace("event!docstore.stored event",
 		"partition", processor.partition,
-		"partitionVersion", event.EventId,
+		"eventId", event.EventId,
 		"encodedEvent", encodedEvent)
 	processor.lastEventId = event.EventId
 	// update in memory lookup
@@ -189,7 +194,6 @@ func (processor *commandProcessor) exec(execReq *command) []byte {
 	processor.lookupSyncer.enqueue(event)
 	return replySuccess(encodedResp)
 }
-
 
 func (processor *commandProcessor) LoadOffset(partition uint64) (uint64, error) {
 	offset, err := kvstore.GetMonotonic(partition, "offset")

@@ -9,6 +9,7 @@ import (
 	"time"
 	"fmt"
 	"bytes"
+	"github.com/v2pro/quokka/kvstore"
 )
 
 var Mux = &http.ServeMux{}
@@ -31,8 +32,7 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 	}
 	ctx := req.Context()
 	localAddr, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
-	partition := HashToPartition(reqObj.EntityId)
-	reqObj.partition = partition
+	partition := kvstore.HashToPartition(reqObj.EntityId)
 	master, err := getMaster(partition)
 	if err != nil {
 		respWriter.Write(replyError(err))

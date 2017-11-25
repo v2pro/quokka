@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"github.com/json-iterator/go"
 	"net"
+	"github.com/v2pro/quokka/kvstore"
 )
 
 func Test_write_to_master(t *testing.T) {
@@ -18,7 +19,7 @@ func Test_write_to_master(t *testing.T) {
 			return nil
 		})
 	entityId := "123"
-	partition := HashToPartition(entityId)
+	partition := kvstore.HashToPartition(entityId)
 	should.Nil(setPartitionServers(partition, &partitionServers{
 		Master: &net.TCPAddr{
 			IP:   net.ParseIP("127.0.0.1"),
@@ -48,7 +49,7 @@ func Test_write_to_slave(t *testing.T) {
 			return nil
 		})
 	entityId := "123"
-	partition := HashToPartition(entityId)
+	partition := kvstore.HashToPartition(entityId)
 	should.Nil(setPartitionServers(partition, &partitionServers{
 		Master: &net.TCPAddr{
 			IP:   net.ParseIP("127.0.0.1"),

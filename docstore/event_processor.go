@@ -68,6 +68,7 @@ func (processor *eventProcessor) enqueue(event *Event) {
 	for {
 		select {
 		case inbox <- event:
+			return
 		default:
 			// events dropped will be restored from kvstore
 			inbox.clear()

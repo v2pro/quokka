@@ -6,6 +6,7 @@ import (
 	"github.com/json-iterator/go"
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/v2pro/quokka/kvstore"
+	"github.com/rs/xid"
 )
 
 func Test_create_object(t *testing.T) {
@@ -14,18 +15,16 @@ func Test_create_object(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return "hello"
 		})
-	entityId := newID().String()
-	resp := exec(0, &command{
+	entityId := xid.New().String()
+	processor := newCommandProcessor(0)
+	resp := processor.exec(&command{
 		EntityType:  "user",
 		CommandType: "create",
 		EntityId:    entityId,
 	})
-	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
+	should.Equal("", jsoniter.Get(resp, "errmsg").ToString())
 	should.Equal("hello", jsoniter.Get(resp, "data").ToString())
-	partition := HashToPartition(entityId)
-	should.True(jsoniter.Get(debugGet(partition, 1), "State").ToBool())
-	eventId, _ := getEventId(partition, entityId)
-	should.Equal(uint64(1), eventId)
+	should.True(jsoniter.Get(debugGet(0, 1), "s").ToBool())
 }
 
 func Test_get_object(t *testing.T) {
@@ -39,14 +38,15 @@ func Test_get_object(t *testing.T) {
 			return doc
 		})
 
-	entityId := newID().String()
-	resp := exec(0, &command{
+	entityId := xid.New().String()
+	processor := newCommandProcessor(0)
+	resp := processor.exec(&command{
 		EntityType:  "user",
 		CommandType: "create",
 		EntityId:    entityId,
 	})
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
-	resp = exec(0, &command{
+	resp = processor.exec(&command{
 		EntityType:  "user",
 		CommandType: "get",
 		EntityId:    entityId,
@@ -55,9 +55,9 @@ func Test_get_object(t *testing.T) {
 	should.Equal("world", jsoniter.Get(resp, "data", "hello").ToString())
 }
 
-func reset(entityType string) *entityType {
+func reset(entityType string) *entityCommandHandlers {
 	resetMemKVStore()
-	entityTypes = map[string]*entityType{}
+	entityTypes = map[string]*entityCommandHandlers{}
 	return AddEntityType(entityType)
 }
 

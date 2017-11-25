@@ -8,9 +8,6 @@ import (
 	"errors"
 	"github.com/json-iterator/go"
 	"github.com/v2pro/plz/countlog"
-	"net/http"
-	"bytes"
-	"io/ioutil"
 )
 
 type partitionServers struct {

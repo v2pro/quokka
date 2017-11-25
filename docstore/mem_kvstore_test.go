@@ -9,14 +9,21 @@ type memRow []byte
 type memPartition [][]byte
 var memPartitions = make([]memPartition, kvstore.PartitionsCount)
 var memMetadata = map[string][]byte{}
+var memMonotonics = []map[string]uint64{}
 
 func resetMemKVStore() {
 	memPartitions = make([]memPartition, kvstore.PartitionsCount)
+	memMonotonics = make([]map[string]uint64, kvstore.PartitionsCount)
+	for i := 0; i < len(memMonotonics); i++ {
+		memMonotonics[i] = map[string]uint64{}
+	}
 	memMetadata = map[string][]byte{}
 	kvstore.Get = memGet
 	kvstore.Append = memAppend
 	kvstore.GetMetadata = memGetMetadata
 	kvstore.SetMetadata = memSetMetadata
+	kvstore.GetMonotonic = memGetMonotonic
+	kvstore.SetMonotonic = memSetMonotonic
 }
 
 func memGet(partition uint64, rowKey uint64) ([]byte, error)  {
@@ -52,5 +59,16 @@ func memGetMetadata(key string) ([]byte, error) {
 
 func memSetMetadata(key string, value []byte) error {
 	memMetadata[key] = value
+	return nil
+}
+
+func memGetMonotonic(partition uint64, key string) (uint64, error) {
+	return memMonotonics[partition][key], nil
+}
+
+func memSetMonotonic(partition uint64, key string, value uint64) error {
+	if value > memMonotonics[partition][key] {
+		memMonotonics[partition][key] = value
+	}
 	return nil
 }

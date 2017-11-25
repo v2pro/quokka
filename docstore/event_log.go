@@ -37,7 +37,7 @@ func loadEntity(partition uint64, entityType string, entityId string, eventId ui
 	if err != nil {
 		countlog.Trace("event!event_log.event not found",
 			"err", err,
-			"entityType", entityType,
+			"entityCommandHandlers", entityType,
 			"entityId", entityId,
 			"partition", partition,
 			"eventId", eventId)
