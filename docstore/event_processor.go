@@ -4,9 +4,11 @@ import (
 	"github.com/v2pro/plz/countlog"
 	"github.com/v2pro/quokka/kvstore"
 	"time"
+	"sync"
 )
 
-var eventSubscribers []*EventSubscriber
+var subscribers []*eventSubscriber
+var subscribersMutex = &sync.Mutex{}
 
 type eventProcessor struct {
 	partition uint64
@@ -38,21 +40,29 @@ type EventHandler interface {
 	Sync(event *Event) error
 }
 
-type EventSubscriber struct {
-	Handler    EventHandler
+type eventSubscriber struct {
+	handler    EventHandler
 	processors []*eventProcessor
 }
 
-func (subscriber *EventSubscriber) start() {
+func (subscriber *eventSubscriber) start() {
 	subscriber.processors = make([]*eventProcessor, kvstore.PartitionsCount)
 	for i := 0; i < len(subscriber.processors); i++ {
-		subscriber.processors[i] = newEventProcessor(uint64(i), subscriber.Handler)
+		subscriber.processors[i] = newEventProcessor(uint64(i), subscriber.handler)
 		go subscriber.processors[i].syncInBackground()
 	}
 }
 
-func (subscriber *EventSubscriber) enqueue(event *Event) {
+func (subscriber *eventSubscriber) enqueue(event *Event) {
 	subscriber.processors[event.Partition].enqueue(event)
+}
+
+func AddEventHandler(handler EventHandler) {
+	subscribersMutex.Lock()
+	defer subscribersMutex.Unlock()
+	subscriber := &eventSubscriber{handler: handler}
+	subscriber.start()
+	subscribers = append(subscribers, subscriber)
 }
 
 func newEventProcessor(partition uint64, handler EventHandler) *eventProcessor {
@@ -174,7 +184,7 @@ func forwardEventInBackground(event *Event) {
 				"stacktrace", countlog.ProvideStacktrace)
 		}
 	}()
-	for _, subscriber := range eventSubscribers {
+	for _, subscriber := range subscribers {
 		subscriber.enqueue(event)
 	}
 }
