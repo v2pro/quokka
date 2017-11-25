@@ -15,13 +15,13 @@ func Test_write_to_master(t *testing.T) {
 	should := require.New(t)
 	reset("user").Handler("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
-		return nil
-	})
+			return nil
+		})
 	entityId := "123"
-	partition := hashToPartition(entityId)
+	partition := HashToPartition(entityId)
 	should.Nil(setPartitionServers(partition, &partitionServers{
 		Master: &net.TCPAddr{
-			IP: net.ParseIP("127.0.0.1"),
+			IP:   net.ParseIP("127.0.0.1"),
 			Port: 2515,
 		},
 	}))
@@ -41,16 +41,17 @@ func Test_write_to_master(t *testing.T) {
 	should.Equal("", jsoniter.Get(body, "errmsg").ToString())
 }
 
-func Test_write_to_slave(t *testing.T) {should := require.New(t)
+func Test_write_to_slave(t *testing.T) {
+	should := require.New(t)
 	reset("user").Handler("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		})
 	entityId := "123"
-	partition := hashToPartition(entityId)
+	partition := HashToPartition(entityId)
 	should.Nil(setPartitionServers(partition, &partitionServers{
 		Master: &net.TCPAddr{
-			IP: net.ParseIP("127.0.0.1"),
+			IP:   net.ParseIP("127.0.0.1"),
 			Port: 2515,
 		},
 	}))

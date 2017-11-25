@@ -15,14 +15,14 @@ func Test_create_object(t *testing.T) {
 			return "hello"
 		})
 	entityId := newID().String()
-	resp := exec(0, &execRequest{
+	resp := exec(0, &command{
 		EntityType:  "user",
 		CommandType: "create",
 		EntityId:    entityId,
 	})
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
 	should.Equal("hello", jsoniter.Get(resp, "data").ToString())
-	partition := hashToPartition(entityId)
+	partition := HashToPartition(entityId)
 	should.True(jsoniter.Get(debugGet(partition, 1), "State").ToBool())
 	eventId, _ := getEventId(partition, entityId)
 	should.Equal(uint64(1), eventId)
@@ -40,13 +40,13 @@ func Test_get_object(t *testing.T) {
 		})
 
 	entityId := newID().String()
-	resp := exec(0, &execRequest{
+	resp := exec(0, &command{
 		EntityType:  "user",
 		CommandType: "create",
 		EntityId:    entityId,
 	})
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
-	resp = exec(0, &execRequest{
+	resp = exec(0, &command{
 		EntityType:  "user",
 		CommandType: "get",
 		EntityId:    entityId,
@@ -55,10 +55,10 @@ func Test_get_object(t *testing.T) {
 	should.Equal("world", jsoniter.Get(resp, "data", "hello").ToString())
 }
 
-func reset(entityType string) *Store {
+func reset(entityType string) *entityType {
 	resetMemKVStore()
-	stores = map[string]*Store{}
-	return AddStore(entityType)
+	entityTypes = map[string]*entityType{}
+	return AddEntityType(entityType)
 }
 
 func debugGet(partition uint64, rowKey uint64) []byte {
