@@ -8,6 +8,7 @@ import (
 	"github.com/v2pro/quokka/docstore/compiler"
 	"strconv"
 	"fmt"
+	"bytes"
 )
 
 func Compile(input string) (func(doc interface{}, req interface{}) interface{}, error) {
@@ -39,6 +40,7 @@ func Fn(doc interface{}, req interface{}) interface{} {
 	return handle(doc, req)
 }
 `)
+	translators := map[string]*translator{}
 	for _, funcStmtObj := range funcLiteral.Body.(*ast.BlockStatement).List {
 		funcStmt := funcStmtObj.(*ast.FunctionStatement)
 		funcName := funcStmt.Function.Name.Name
@@ -49,11 +51,26 @@ func Fn(doc interface{}, req interface{}) interface{} {
 		for _, param := range funcStmt.Function.ParameterList.List {
 			paramNames = append(paramNames, param.Name)
 		}
-		tl.translate(funcName, paramNames)
+		tl.translate(funcName, paramNames, bytes.Count(output, []byte{'\n'}))
 		if tl.err != nil {
 			return "", tl.err
 		}
 		output = append(output, tl.output...)
+		translators[funcName] = tl
+	}
+	for funcName, tl := range translators {
+		output = append(output, `var `...)
+		output = append(output, funcName...)
+		output = append(output, `_JS_SOURCE=`...)
+		output = append(output, '`')
+		output = append(output, tl.input...)
+		output = append(output, '`', '\n')
+		output = append(output, `var `...)
+		output = append(output, funcName...)
+		output = append(output, `_GO_SOURCE=`...)
+		output = append(output, '`')
+		output = append(output, tl.goSrc...)
+		output = append(output, '`', '\n')
 	}
 	return string(output), nil
 }
@@ -63,6 +80,7 @@ type translator struct {
 	output         []byte
 	jsOffsets      []int
 	goOffsets      []int
+	goSrc          []byte
 	err            error
 	hasReturnValue bool
 }
@@ -71,14 +89,14 @@ func (tl *translator) reportError(node ast.Node, errmsg string) {
 	tl.err = errors.New(errmsg)
 }
 
-func (tl *translator) translate(funcName string, paramNames []string) {
+func (tl *translator) translate(funcName string, paramNames []string, absoluteLineNo int) {
 	funcLiteral, err := parser.ParseFunction("", tl.input)
 	if err != nil {
 		tl.err = err
 		return
 	}
 	tl.translateStatement(funcLiteral.Body)
-	goSrc := tl.output
+	tl.goSrc = tl.output
 	tl.output = []byte(`func `)
 	tl.output = append(tl.output, funcName...)
 	tl.output = append(tl.output, '(')
@@ -97,7 +115,9 @@ func (tl *translator) translate(funcName string, paramNames []string) {
 		defer func() {
 			recovered := recover()
 			if recovered != nil {
-				runtime.ReportError(`...)
+				runtime.ReportError("`...)
+	tl.output = append(tl.output, funcName...)
+	tl.output = append(tl.output, `", `...)
 	tl.output = append(tl.output, funcName...)
 	tl.output = append(tl.output, "_JS_SOURCE, []int{"...)
 	for i, offset := range tl.jsOffsets {
@@ -115,25 +135,14 @@ func (tl *translator) translate(funcName string, paramNames []string) {
 		}
 		tl.output = append(tl.output, strconv.Itoa(offset)...)
 	}
-	tl.output = append(tl.output, `}, recovered)
+	tl.output = append(tl.output, `}, `...)
+	tl.output = append(tl.output, strconv.Itoa(absoluteLineNo)...)
+	tl.output = append(tl.output, `, recovered)
 		}
 	}()
 `...)
-
-	tl.output = append(tl.output, goSrc...)
+	tl.output = append(tl.output, tl.goSrc...)
 	tl.output = append(tl.output, "}\n"...)
-	tl.output = append(tl.output, `var `...)
-	tl.output = append(tl.output, funcName...)
-	tl.output = append(tl.output, `_JS_SOURCE=`...)
-	tl.output = append(tl.output, '`')
-	tl.output = append(tl.output, tl.input...)
-	tl.output = append(tl.output, '`', '\n')
-	tl.output = append(tl.output, `var `...)
-	tl.output = append(tl.output, funcName...)
-	tl.output = append(tl.output, `_GO_SOURCE=`...)
-	tl.output = append(tl.output, '`')
-	tl.output = append(tl.output, goSrc...)
-	tl.output = append(tl.output, '`', '\n')
 }
 
 func (tl *translator) translateStatement(stmt ast.Statement) {

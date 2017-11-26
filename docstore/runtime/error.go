@@ -8,22 +8,43 @@ import (
 
 const jsExtraHead = 15
 
-func ReportError(jsSrc string, jsOffsets []int, goSrc string, goOffsets []int, recovered interface{}) {
+type jsError struct {
+	funcName    string
+	targetJsSrc string
+	targetGoSrc string
+	recovered   interface{}
+}
+
+func (err *jsError) String() string {
+	return fmt.Sprintf("funcName:\n%s\njavascript source:\n%s\n===\ngo source:\n%s\n===\nerror: %v",
+		err.funcName, err.targetJsSrc, err.targetGoSrc, err.recovered)
+}
+
+func ReportError(funcName string, jsSrc string, jsOffsets []int, goSrc string, goOffsets []int,
+	absoluteLineNo int, recovered interface{}) {
+	if _, isJsError := recovered.(*jsError); isJsError {
+		panic(recovered)
+	}
 	_, targetFile, _, _ := goruntime.Caller(1)
 	pc := make([]uintptr, 256)
 	pc = pc[:goruntime.Callers(2, pc)]
 	frames := goruntime.CallersFrames(pc)
-	line := 0
+	line := -1
+	suffix := "." + funcName
 	for {
 		frame, more := frames.Next()
-		if frame.File == targetFile {
+		if frame.File == targetFile && len(frame.Function) >= len(suffix) &&
+			frame.Function[len(frame.Function)-len(suffix):] == suffix {
 			line = frame.Line
 		}
 		if !more {
 			break
 		}
 	}
-	targetLine := line - 8
+	if line == -1 {
+		panic(recovered)
+	}
+	targetLine := line - absoluteLineNo - 9
 	targetGoSrc, targetStart, targetEnd := searchLine(goSrc, targetLine)
 	if targetGoSrc == "" {
 		panic(recovered)
@@ -38,7 +59,12 @@ func ReportError(jsSrc string, jsOffsets []int, goSrc string, goOffsets []int, r
 		targetJsSrc = jsSrc[jsStart:jsEnd]
 	}
 	targetJsSrc = strings.TrimSpace(targetJsSrc)
-	panic(fmt.Sprintf("javascript source:\n%s\n===\ngo source:\n%s\n===\nerror: %v", targetJsSrc, targetGoSrc, recovered))
+	panic(&jsError{
+		funcName:    funcName,
+		targetGoSrc: targetGoSrc,
+		targetJsSrc: targetJsSrc,
+		recovered:   recovered,
+	})
 }
 
 func searchLine(str string, targetLine int) (string, int, int) {
@@ -68,8 +94,8 @@ func searchGoOffsets(goOffsets []int, targetStart int, targetEnd int) (int, int)
 			startFound = true
 			startIndex = i
 		}
-		if startFound && goOffsets[i] >= targetEnd {
-			return startIndex, i
+		if startFound && goOffsets[i+1] >= targetEnd {
+			return startIndex, i + 1
 		}
 	}
 	if startFound {

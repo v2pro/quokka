@@ -84,7 +84,7 @@ var SOURCE__HASH = "%s"
 		return nil, err
 	}
 	countlog.Debug("event!compiler.build plugin", "soFileName", soFileName, "srcFileName", srcFileName)
-	cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", soFileName, srcFileName)
+	cmd := exec.Command("go", "build", "-gcflags", "-N", "-buildmode=plugin", "-o", soFileName, srcFileName)
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf
 	var outBuf bytes.Buffer

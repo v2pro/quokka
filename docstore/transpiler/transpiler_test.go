@@ -62,18 +62,24 @@ func Test_sub_function(t *testing.T) {
 
 func Test_report_error(t *testing.T) {
 	should := require.New(t)
-	fn, err := Compile(`req['1']='2';
-	req['1']='2';
-	req['1']='2';
-	req['1']='2';
-	req['hello'];
-	req['1']='2';
-	return req['hello'];
+	fn, err := Compile(`
+	function troubledFunc(doc, req) {
+		doc['1']='1';
+		req['hello'];
+		return 0;
+	}
+	function handle(doc, req) {
+		doc['1']='1';
+		doc['1']='2';
+		doc['1']='3';
+		troubledFunc(doc, req);
+		doc['1']='4';
+		return null;
+	}
 	`)
 	should.Nil(err)
 	obj := runtime.NewObject()
 	obj.Set("hello", "world")
-
 	should.Panics(func() {
 		fn(obj, nil)
 	})
