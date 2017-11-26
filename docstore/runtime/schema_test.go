@@ -2,24 +2,49 @@ package runtime
 
 import (
 	"testing"
-	"github.com/v2pro/quokka/docstore/pb"
-	"github.com/antlr/antlr4/runtime/Go/antlr"
-	"fmt"
-	"reflect"
+	"github.com/stretchr/testify/require"
 )
 
-func Test_pb(t *testing.T) {
-	charStream := antlr.NewInputStream(`
-	message Doc {
-		string nested_msg = 1;
+func Test_thrift(t *testing.T) {
+	should := require.New(t)
+	obj := NewObject()
+	obj.Schema = NewSchemaByThriftIDL(`
+	struct Doc {
+		1: required string hello;
+		2: required string world;
 	}
 	`)
-	lexer := pb.NewProtobuf3Lexer(charStream)
-	tokenStream := antlr.NewCommonTokenStream(lexer, 0)
-	parser := pb.NewProtobuf3Parser(tokenStream)
-	msg := parser.Message()
-	fmt.Println(msg.GetChildCount())
-	fmt.Println(msg.GetChild(0))
-	fmt.Println(msg.GetChild(1).GetChild(0))
-	fmt.Println(reflect.TypeOf(msg.GetChild(2)))
+	should.Panics(func() {
+		obj.Set("hello", 1)
+	})
+}
+
+func Test_validate_direct_field(t *testing.T) {
+	should := require.New(t)
+	obj := NewObject()
+	obj.Schema = &Schema{
+		Fields: map[string]*Schema{
+			"hello": mustBeString,
+		},
+	}
+	should.Panics(func() {
+		obj.Set("hello", 1)
+	})
+}
+
+func Test_validate_indirect_field(t *testing.T) {
+	should := require.New(t)
+	obj := NewObject()
+	obj.Schema = &Schema{
+		Fields: map[string]*Schema{
+			"hello": {
+				Fields: map[string]*Schema{
+					"world": mustBeString,
+				},
+			},
+		},
+	}
+	should.Panics(func() {
+		obj.Set("hello", NewObject("world", 1))
+	})
 }

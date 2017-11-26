@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/v2pro/quokka/docstore/compiler"
 	"strconv"
+	"fmt"
 )
 
 func compile(input string) (func(doc interface{}, req interface{}) interface{}, error) {
@@ -135,6 +136,10 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.output = append(tl.output, typedExpr.Name...)
 	case *ast.BracketExpression:
 		tl.translateBracketExpression(typedExpr)
+	case *ast.ObjectLiteral:
+		tl.translateObjectLiteral(typedExpr)
+	case *ast.NumberLiteral:
+		tl.output = append(tl.output, fmt.Sprintf("%v", typedExpr.Value)...)
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}
@@ -167,4 +172,18 @@ func (tl *translator) translateStringLiteral(expr *ast.StringLiteral) {
 	tl.output = append(tl.output, '"')
 	tl.output = append(tl.output, expr.Value...)
 	tl.output = append(tl.output, '"')
+}
+
+func (tl *translator) translateObjectLiteral(expr *ast.ObjectLiteral) {
+	tl.output = append(tl.output, `runtime.NewObject(`...)
+	for i, prop := range expr.Value {
+		if i > 0 {
+			tl.output = append(tl.output, ", "...)
+		}
+		tl.output = append(tl.output, '"')
+		tl.output = append(tl.output, prop.Key...)
+		tl.output = append(tl.output, `", `...)
+		tl.translateExpression(prop.Value)
+	}
+	tl.output = append(tl.output, ')')
 }

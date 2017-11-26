@@ -38,15 +38,20 @@ func init() {
 }
 
 type DObject struct {
+	Schema  *Schema
 	data    map[string]interface{}
 	updated map[string]interface{}
 	patched map[string]interface{}
 	removed map[string]interface{}
 }
 
-func NewObject() *DObject {
+func NewObject(kv ...interface{}) *DObject {
+	data := map[string]interface{}{}
+	for i := 0; i < len(kv); i += 2 {
+		data[kv[i].(string)] = kv[i+1]
+	}
 	return &DObject{
-		data: map[string]interface{}{},
+		data: data,
 	}
 }
 

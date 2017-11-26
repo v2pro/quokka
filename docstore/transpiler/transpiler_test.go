@@ -4,10 +4,9 @@ import (
 	"testing"
 	"github.com/stretchr/testify/require"
 	"github.com/v2pro/quokka/docstore/runtime"
-	"fmt"
 )
 
-func Test_set_field(t *testing.T) {
+func Test_set_string(t *testing.T) {
 	should := require.New(t)
 	fn, err := compile(`
 	doc['hello']='world';
@@ -17,6 +16,18 @@ func Test_set_field(t *testing.T) {
 	obj := runtime.NewObject()
 	fn(obj, nil)
 	should.Equal("world", runtime.Get(obj, "hello"))
+}
+
+func Test_set_object(t *testing.T) {
+	should := require.New(t)
+	fn, err := compile(`
+	doc['hello']={1:2.1};
+	return nil;
+	`)
+	should.Nil(err)
+	obj := runtime.NewObject()
+	fn(obj, nil)
+	should.Equal(2.1, runtime.Get(obj, "hello", "1"))
 }
 
 func Test_get_field(t *testing.T) {
@@ -32,10 +43,6 @@ func Test_get_field(t *testing.T) {
 
 func Test_report_error(t *testing.T) {
 	should := require.New(t)
-	defer func() {
-		recovered := recover()
-		should.Contains(fmt.Sprintf("%v", recovered), "req['hello']")
-	}()
 	fn, err := compile(`req['1']='2';
 	req['1']='2';
 	req['1']='2';
@@ -47,5 +54,8 @@ func Test_report_error(t *testing.T) {
 	should.Nil(err)
 	obj := runtime.NewObject()
 	obj.Set("hello", "world")
-	fn(obj, nil)
+
+	should.Panics(func() {
+		fn(obj, nil)
+	})
 }
