@@ -27,33 +27,51 @@ func Compile(input string) (func(doc interface{}, req interface{}) interface{}, 
 }
 
 func translate(input string) (string, error) {
-	tl := &translator{
-		input: input,
+	funcLiteral, err := parser.ParseFunction("", input)
+	if err != nil {
+		return "", err
 	}
-	tl.translate()
-	if tl.err != nil {
-		return "", tl.err
-	}
-	return string(tl.output), nil
-}
+	output := []byte(`
+package main
+import "github.com/v2pro/quokka/docstore/runtime"
 
-type config struct {
+func Fn(doc interface{}, req interface{}) interface{} {
+	return handle(doc, req)
+}
+`)
+	for _, funcStmtObj := range funcLiteral.Body.(*ast.BlockStatement).List {
+		funcStmt := funcStmtObj.(*ast.FunctionStatement)
+		funcName := funcStmt.Function.Name.Name
+		tl := &translator{
+			input: input[funcStmt.Function.Body.Idx0()-14: funcStmt.Function.Body.Idx1()-16],
+		}
+		paramNames := []string{}
+		for _, param := range funcStmt.Function.ParameterList.List {
+			paramNames = append(paramNames, param.Name)
+		}
+		tl.translate(funcName, paramNames)
+		if tl.err != nil {
+			return "", tl.err
+		}
+		output = append(output, tl.output...)
+	}
+	return string(output), nil
 }
 
 type translator struct {
-	input     string
-	output    []byte
-	jsOffsets []int
-	goOffsets []int
-	cfg       config
-	err       error
+	input          string
+	output         []byte
+	jsOffsets      []int
+	goOffsets      []int
+	err            error
+	hasReturnValue bool
 }
 
 func (tl *translator) reportError(node ast.Node, errmsg string) {
 	tl.err = errors.New(errmsg)
 }
 
-func (tl *translator) translate() {
+func (tl *translator) translate(funcName string, paramNames []string) {
 	funcLiteral, err := parser.ParseFunction("", tl.input)
 	if err != nil {
 		tl.err = err
@@ -61,22 +79,36 @@ func (tl *translator) translate() {
 	}
 	tl.translateStatement(funcLiteral.Body)
 	goSrc := tl.output
-	tl.output = []byte(`
-package main
-import "github.com/v2pro/quokka/docstore/runtime"
-func Fn(doc interface{}, req interface{}) interface{} {
-	defer func() {
-		recovered := recover()
-		if recovered != nil {
-			runtime.ReportError(`)
-	tl.output = append(tl.output, "JS_SOURCE, []int{"...)
+	tl.output = []byte(`func `)
+	tl.output = append(tl.output, funcName...)
+	tl.output = append(tl.output, '(')
+	for i, paramName := range paramNames {
+		if i > 0 {
+			tl.output = append(tl.output, ", "...)
+		}
+		tl.output = append(tl.output, paramName...)
+		tl.output = append(tl.output, " interface{}"...)
+	}
+	tl.output = append(tl.output, ") "...)
+	if tl.hasReturnValue {
+		tl.output = append(tl.output, "interface{} "...)
+	}
+	tl.output = append(tl.output, `{
+		defer func() {
+			recovered := recover()
+			if recovered != nil {
+				runtime.ReportError(`...)
+	tl.output = append(tl.output, funcName...)
+	tl.output = append(tl.output, "_JS_SOURCE, []int{"...)
 	for i, offset := range tl.jsOffsets {
 		if i > 0 {
 			tl.output = append(tl.output, ", "...)
 		}
 		tl.output = append(tl.output, strconv.Itoa(offset)...)
 	}
-	tl.output = append(tl.output, "}, GO_SOURCE, []int{"...)
+	tl.output = append(tl.output, "}, "...)
+	tl.output = append(tl.output, funcName...)
+	tl.output = append(tl.output, "_GO_SOURCE, []int{"...)
 	for i, offset := range tl.goOffsets {
 		if i > 0 {
 			tl.output = append(tl.output, ", "...)
@@ -90,11 +122,15 @@ func Fn(doc interface{}, req interface{}) interface{} {
 
 	tl.output = append(tl.output, goSrc...)
 	tl.output = append(tl.output, "}\n"...)
-	tl.output = append(tl.output, `var JS_SOURCE=`...)
+	tl.output = append(tl.output, `var `...)
+	tl.output = append(tl.output, funcName...)
+	tl.output = append(tl.output, `_JS_SOURCE=`...)
 	tl.output = append(tl.output, '`')
 	tl.output = append(tl.output, tl.input...)
 	tl.output = append(tl.output, '`', '\n')
-	tl.output = append(tl.output, `var GO_SOURCE=`...)
+	tl.output = append(tl.output, `var `...)
+	tl.output = append(tl.output, funcName...)
+	tl.output = append(tl.output, `_GO_SOURCE=`...)
 	tl.output = append(tl.output, '`')
 	tl.output = append(tl.output, goSrc...)
 	tl.output = append(tl.output, '`', '\n')
@@ -107,6 +143,7 @@ func (tl *translator) translateStatement(stmt ast.Statement) {
 	case *ast.ExpressionStatement:
 		tl.translateExpression(typedStmt.Expression)
 	case *ast.ReturnStatement:
+		tl.hasReturnValue = true
 		tl.translateReturnStatement(typedStmt)
 	default:
 		tl.reportError(stmt, "can not handle "+reflect.TypeOf(stmt).String())
@@ -142,6 +179,8 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.output = append(tl.output, fmt.Sprintf("%v", typedExpr.Value)...)
 	case *ast.NullLiteral:
 		tl.output = append(tl.output, "nil"...)
+	case *ast.CallExpression:
+		tl.translateCallExpression(typedExpr)
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}
@@ -186,6 +225,18 @@ func (tl *translator) translateObjectLiteral(expr *ast.ObjectLiteral) {
 		tl.output = append(tl.output, prop.Key...)
 		tl.output = append(tl.output, `", `...)
 		tl.translateExpression(prop.Value)
+	}
+	tl.output = append(tl.output, ')')
+}
+
+func (tl *translator) translateCallExpression(expr *ast.CallExpression) {
+	tl.translateExpression(expr.Callee)
+	tl.output = append(tl.output, '(')
+	for i, arg := range expr.ArgumentList {
+		if i > 0 {
+			tl.output = append(tl.output, ", "...)
+		}
+		tl.translateExpression(arg)
 	}
 	tl.output = append(tl.output, ')')
 }

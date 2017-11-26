@@ -8,9 +8,11 @@ import (
 
 func Test_set_string(t *testing.T) {
 	should := require.New(t)
-	fn, err := compile(`
-	doc['hello']='world';
-	return nil;
+	fn, err := Compile(`
+	function handle(doc, req) {
+		doc['hello']='world';
+		return nil;
+	}
 	`)
 	should.Nil(err)
 	obj := runtime.NewObject()
@@ -20,7 +22,7 @@ func Test_set_string(t *testing.T) {
 
 func Test_set_object(t *testing.T) {
 	should := require.New(t)
-	fn, err := compile(`
+	fn, err := Compile(`
 	doc['hello']={1:2.1};
 	return nil;
 	`)
@@ -32,7 +34,7 @@ func Test_set_object(t *testing.T) {
 
 func Test_get_field(t *testing.T) {
 	should := require.New(t)
-	fn, err := compile(`
+	fn, err := Compile(`
 	return doc['hello'];
 	`)
 	should.Nil(err)
@@ -41,9 +43,26 @@ func Test_get_field(t *testing.T) {
 	should.Equal("world", fn(obj, nil))
 }
 
+func Test_sub_function(t *testing.T) {
+	should := require.New(t)
+	fn, err := Compile(`
+	function handle(doc, req) {
+		updateDoc(doc);
+		return nil;
+	}
+	function updateDoc(doc) {
+		doc['hello']='world'
+	}
+	`)
+	should.Nil(err)
+	obj := runtime.NewObject()
+	fn(obj, nil)
+	should.Equal("world", runtime.Get(obj, "hello"))
+}
+
 func Test_report_error(t *testing.T) {
 	should := require.New(t)
-	fn, err := compile(`req['1']='2';
+	fn, err := Compile(`req['1']='2';
 	req['1']='2';
 	req['1']='2';
 	req['1']='2';
