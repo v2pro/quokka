@@ -5,8 +5,8 @@ import (
 	"github.com/robertkrimen/otto/ast"
 	"reflect"
 	"errors"
-	"fmt"
 	"github.com/v2pro/quokka/docstore/compiler"
+	"strconv"
 )
 
 func compile(input string) (func(doc interface{}, req interface{}) interface{}, error) {
@@ -37,13 +37,13 @@ func translate(input string) (string, error) {
 }
 
 type config struct {
-	includesDebugInfo bool
 }
 
 type translator struct {
 	input     string
 	output    []byte
-	debugInfo string
+	jsOffsets []int
+	goOffsets []int
 	cfg       config
 	err       error
 }
@@ -58,13 +58,45 @@ func (tl *translator) translate() {
 		tl.err = err
 		return
 	}
-	tl.output = append(tl.output, `
+	tl.translateStatement(funcLiteral.Body)
+	goSrc := tl.output
+	tl.output = []byte(`
 package main
 import "github.com/v2pro/quokka/docstore/runtime"
 func Fn(doc interface{}, req interface{}) interface{} {
+	defer func() {
+		recovered := recover()
+		if recovered != nil {
+			runtime.ReportError(`)
+	tl.output = append(tl.output, "JS_SOURCE, []int{"...)
+	for i, offset := range tl.jsOffsets {
+		if i > 0 {
+			tl.output = append(tl.output, ", "...)
+		}
+		tl.output = append(tl.output, strconv.Itoa(offset)...)
+	}
+	tl.output = append(tl.output, "}, GO_SOURCE, []int{"...)
+	for i, offset := range tl.goOffsets {
+		if i > 0 {
+			tl.output = append(tl.output, ", "...)
+		}
+		tl.output = append(tl.output, strconv.Itoa(offset)...)
+	}
+	tl.output = append(tl.output, `}, recovered)
+		}
+	}()
 `...)
-	tl.translateStatement(funcLiteral.Body)
-	tl.output = append(tl.output, '}')
+
+	tl.output = append(tl.output, goSrc...)
+	tl.output = append(tl.output, "}\n"...)
+	tl.output = append(tl.output, `var JS_SOURCE=`...)
+	tl.output = append(tl.output, '`')
+	tl.output = append(tl.output, tl.input...)
+	tl.output = append(tl.output, '`', '\n')
+	tl.output = append(tl.output, `var GO_SOURCE=`...)
+	tl.output = append(tl.output, '`')
+	tl.output = append(tl.output, goSrc...)
+	tl.output = append(tl.output, '`', '\n')
 }
 
 func (tl *translator) translateStatement(stmt ast.Statement) {
@@ -86,9 +118,8 @@ func (tl *translator) translateReturnStatement(stmt *ast.ReturnStatement) {
 
 func (tl *translator) translateBlockStatement(stmt *ast.BlockStatement) {
 	for _, child := range stmt.List {
-		if tl.cfg.includesDebugInfo {
-			tl.debugInfo = fmt.Sprintf("%v~%v", child.Idx0(), child.Idx1())
-		}
+		tl.jsOffsets = append(tl.jsOffsets, int(child.Idx0()))
+		tl.goOffsets = append(tl.goOffsets, len(tl.output))
 		tl.translateStatement(child)
 		tl.output = append(tl.output, '\n')
 	}
@@ -110,9 +141,7 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 }
 
 func (tl *translator) translateBracketExpression(expr *ast.BracketExpression) {
-	tl.output = append(tl.output, `runtime.AsObj("`...)
-	tl.output = append(tl.output, tl.debugInfo...)
-	tl.output = append(tl.output, `", `...)
+	tl.output = append(tl.output, `runtime.AsObj(`...)
 	tl.translateExpression(expr.Left)
 	tl.output = append(tl.output, ").Get("...)
 	tl.translateExpression(expr.Member)
@@ -122,9 +151,7 @@ func (tl *translator) translateBracketExpression(expr *ast.BracketExpression) {
 func (tl *translator) translateAssignExpression(expr *ast.AssignExpression) {
 	switch leftExpr := expr.Left.(type) {
 	case *ast.BracketExpression:
-		tl.output = append(tl.output, `runtime.AsObj("`...)
-		tl.output = append(tl.output, tl.debugInfo...)
-		tl.output = append(tl.output, `", `...)
+		tl.output = append(tl.output, `runtime.AsObj(`...)
 		tl.translateExpression(leftExpr.Left)
 		tl.output = append(tl.output, ").Set("...)
 		tl.translateExpression(leftExpr.Member)

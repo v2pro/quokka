@@ -31,7 +31,7 @@ func Test_get_object(t *testing.T) {
 	should := require.New(t)
 	reset("user").Handler("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
-			runtime.AsObj("", doc).Set("hello", "world")
+			runtime.AsObj(doc).Set("hello", "world")
 			return nil
 		}).Handler("get",
 		func(doc interface{}, request interface{}) (resp interface{}) {

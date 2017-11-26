@@ -21,12 +21,8 @@ type Object interface {
 	Get(key interface{}) interface{}
 }
 
-func AsObj(debugInfo string, val interface{}) Object {
-	obj, success := val.(Object)
-	if success {
-		return obj
-	}
-	panic(debugInfo + ": can not cast " + reflect.TypeOf(val).String())
+func AsObj(val interface{}) Object {
+	return val.(Object)
 }
 
 func (obj *DObject) Set(key interface{}, value interface{}) {
