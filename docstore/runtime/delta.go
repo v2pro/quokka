@@ -18,6 +18,7 @@ func init() {
 
 type Object interface {
 	Set(key interface{}, value interface{})
+	Get(key interface{}) interface{}
 }
 
 func AsObj(debugInfo string, val interface{}) Object {
@@ -34,6 +35,10 @@ func (obj *DObject) Set(key interface{}, value interface{}) {
 		obj.updated = map[string]interface{}{}
 	}
 	obj.updated[key.(string)] = value
+}
+
+func (obj *DObject) Get(key interface{}) interface{} {
+	return obj.data[key.(string)]
 }
 
 func (obj *DObject) isDirty() bool {

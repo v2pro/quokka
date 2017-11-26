@@ -9,7 +9,7 @@ import (
 	"github.com/v2pro/quokka/docstore/compiler"
 )
 
-func compile(input string) (func(doc interface{}), error) {
+func compile(input string) (func(doc interface{}, req interface{}) interface{}, error) {
 	output, err := translate(input)
 	if err != nil {
 		return nil, err
@@ -22,7 +22,7 @@ func compile(input string) (func(doc interface{}), error) {
 	if err != nil {
 		return nil, err
 	}
-	return fn.(func(doc interface{})), nil
+	return fn.(func(doc interface{}, req interface{}) interface{}), nil
 }
 
 func translate(input string) (string, error) {
@@ -61,7 +61,7 @@ func (tl *translator) translate() {
 	tl.output = append(tl.output, `
 package main
 import "github.com/v2pro/quokka/docstore/runtime"
-func Fn(doc interface{}) {
+func Fn(doc interface{}, req interface{}) interface{} {
 `...)
 	tl.translateStatement(funcLiteral.Body)
 	tl.output = append(tl.output, '}')
@@ -73,9 +73,15 @@ func (tl *translator) translateStatement(stmt ast.Statement) {
 		tl.translateBlockStatement(typedStmt)
 	case *ast.ExpressionStatement:
 		tl.translateExpression(typedStmt.Expression)
+	case *ast.ReturnStatement:
+		tl.translateReturnStatement(typedStmt)
 	default:
 		tl.reportError(stmt, "can not handle "+reflect.TypeOf(stmt).String())
 	}
+}
+func (tl *translator) translateReturnStatement(stmt *ast.ReturnStatement) {
+	tl.output = append(tl.output, "return "...)
+	tl.translateExpression(stmt.Argument)
 }
 
 func (tl *translator) translateBlockStatement(stmt *ast.BlockStatement) {
@@ -96,9 +102,21 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.translateStringLiteral(typedExpr)
 	case *ast.Identifier:
 		tl.output = append(tl.output, typedExpr.Name...)
+	case *ast.BracketExpression:
+		tl.translateBracketExpression(typedExpr)
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}
+}
+
+func (tl *translator) translateBracketExpression(expr *ast.BracketExpression) {
+	tl.output = append(tl.output, `runtime.AsObj("`...)
+	tl.output = append(tl.output, tl.debugInfo...)
+	tl.output = append(tl.output, `", `...)
+	tl.translateExpression(expr.Left)
+	tl.output = append(tl.output, ").Get("...)
+	tl.translateExpression(expr.Member)
+	tl.output = append(tl.output, ')')
 }
 
 func (tl *translator) translateAssignExpression(expr *ast.AssignExpression) {
