@@ -1,45 +1,78 @@
 package docstore
 
-import "sync"
+import (
+	"sync"
+	"github.com/v2pro/quokka/docstore/runtime"
+	"github.com/v2pro/quokka/docstore/transpiler"
+	"github.com/v2pro/plz/countlog"
+)
 
-var entityTypes = map[string]*entityCommandHandlers{}
+var entityTypes = map[string]*entityTypeDef{}
 var entityTypesMutex = &sync.Mutex{}
 
 type CommandHandler func(doc interface{}, request interface{}) (resp interface{})
 
-type entityCommandHandlers struct {
-	handlers      map[string]CommandHandler
-	handlersMutex *sync.Mutex
+type commandDef struct {
+	requestSchema  *runtime.Schema
+	responseSchema *runtime.Schema
+	handler        CommandHandler
 }
 
-func (store *entityCommandHandlers) Handler(commandType string, handler CommandHandler) *entityCommandHandlers {
-	store.handlersMutex.Lock()
-	defer store.handlersMutex.Unlock()
-	store.handlers[commandType] = handler
-	return store
+type entityTypeDef struct {
+	schema           *runtime.Schema
+	commandDefs      map[string]*commandDef
+	commandDefsMutex *sync.Mutex
 }
 
-func (store *entityCommandHandlers) getHandler(commandType string) CommandHandler {
-	store.handlersMutex.Lock()
-	defer store.handlersMutex.Unlock()
-	return store.handlers[commandType]
+func (typ *entityTypeDef) Command(commandType string, jsHandler string, thriftIDL string) *entityTypeDef {
+	handler, err := transpiler.Compile(jsHandler)
+	if err != nil {
+		countlog.Error("event!command_handler.failed to transpile javascript",
+			"err", err, "jsHandler", jsHandler)
+		return typ
+	}
+	schemas := runtime.ThriftSchemas(thriftIDL)
+	typ.AddCommand(commandType, handler, schemas["Request"], schemas["Response"])
+	return typ
 }
 
-func AddEntityType(entityType string) *entityCommandHandlers {
+func (typ *entityTypeDef) AddCommand(commandType string, handler CommandHandler,
+	requestSchema *runtime.Schema, responseSchema *runtime.Schema) {
+	typ.commandDefsMutex.Lock()
+	defer typ.commandDefsMutex.Unlock()
+	typ.commandDefs[commandType] = &commandDef{
+		requestSchema:  requestSchema,
+		responseSchema: responseSchema,
+		handler:        handler,
+	}
+}
+
+func (typ *entityTypeDef) getCommandDef(commandType string) *commandDef {
+	typ.commandDefsMutex.Lock()
+	defer typ.commandDefsMutex.Unlock()
+	return typ.commandDefs[commandType]
+}
+
+func Entity(entityType string, thriftIDL string) *entityTypeDef {
+	return AddEntity(entityType, runtime.ThriftSchemas(thriftIDL)["Doc"])
+}
+
+func AddEntity(entityType string, schema *runtime.Schema) *entityTypeDef {
 	entityTypesMutex.Lock()
 	defer entityTypesMutex.Unlock()
 	if entityTypes[entityType] != nil {
 		panic("already has store for " + entityType)
 	}
-	store := &entityCommandHandlers{
-		handlers:      map[string]CommandHandler{},
-		handlersMutex: &sync.Mutex{},
+	typ := &entityTypeDef{
+		schema:           schema,
+		commandDefs:      map[string]*commandDef{},
+		commandDefsMutex: &sync.Mutex{},
 	}
-	entityTypes[entityType] = store
-	return store
+	entityTypes[entityType] = typ
+	return typ
 }
 
-func getEntityType(entityType string) *entityCommandHandlers {
+func getEntityType(entityType string) *entityTypeDef {
 	entityTypesMutex.Lock()
 	defer entityTypesMutex.Unlock()
 	return entityTypes[entityType]

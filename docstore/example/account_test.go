@@ -12,13 +12,25 @@ import (
 )
 
 func Test_account(t *testing.T) {
-	docstore.AddEntityType("Account").Handler("create",
-		func(doc interface{}, request interface{}) (resp interface{}) {
-			return nil
-		}).Handler("charge",
-		func(doc interface{}, request interface{}) (resp interface{}) {
-			return nil
-		})
+	docstore.Entity("Account", `
+	struct Doc {
+		1: i64 amount
+	}
+	`).Command("create", `
+	return null;
+	`, `
+	struct Request {
+	}
+	struct Response {
+	}
+	`).Command("charge", `
+	return null;
+	`, `
+	struct Request {
+	}
+	struct Response {
+	}
+	`)
 	go http.ListenAndServe("127.0.0.1:2515", docstore.Mux)
 	time.Sleep(time.Second)
 	post(t, "http://127.0.0.1:2515/exec", `

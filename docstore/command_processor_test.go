@@ -58,7 +58,7 @@ func Test_get_object(t *testing.T) {
 func reset(entityType string) *entityCommandHandlers {
 	resetMemKVStore()
 	entityTypes = map[string]*entityCommandHandlers{}
-	return AddEntityType(entityType)
+	return Entity(entityType)
 }
 
 func debugGet(partition uint64, rowKey uint64) []byte {

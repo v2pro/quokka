@@ -10,7 +10,7 @@ import (
 	"fmt"
 )
 
-func compile(input string) (func(doc interface{}, req interface{}) interface{}, error) {
+func Compile(input string) (func(doc interface{}, req interface{}) interface{}, error) {
 	output, err := translate(input)
 	if err != nil {
 		return nil, err
@@ -140,6 +140,8 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.translateObjectLiteral(typedExpr)
 	case *ast.NumberLiteral:
 		tl.output = append(tl.output, fmt.Sprintf("%v", typedExpr.Value)...)
+	case *ast.NullLiteral:
+		tl.output = append(tl.output, "nil"...)
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}

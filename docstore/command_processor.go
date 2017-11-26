@@ -122,8 +122,8 @@ func (processor *commandProcessor) exec(execReq *command) []byte {
 	if store == nil {
 		return replyError(errors.New("store not defined for entity type " + entityType))
 	}
-	handler := store.getHandler(commandType)
-	if store == nil {
+	commandDef := store.getCommandDef(commandType)
+	if commandDef == nil {
 		return replyError(errors.New("handler not defined for command type " + commandType))
 	}
 	var ent *entity
@@ -145,7 +145,7 @@ func (processor *commandProcessor) exec(execReq *command) []byte {
 			return replyError(err)
 		}
 	}
-	resp := handler(ent.doc, reqObj)
+	resp := commandDef.handler(ent.doc, reqObj)
 	err, _ = resp.(error)
 	if err != nil {
 		return replyError(err)

@@ -8,12 +8,14 @@ import (
 func Test_thrift(t *testing.T) {
 	should := require.New(t)
 	obj := NewObject()
-	obj.Schema = NewSchemaByThriftIDL(`
-	struct Doc {
-		1: required string hello;
-		2: required string world;
+	obj.Schema = ThriftSchemas(`
+	struct Request {
+		1: required string world;
 	}
-	`)
+	struct Response {
+		2: required string hello;
+	}
+	`)["Response"]
 	should.Panics(func() {
 		obj.Set("hello", 1)
 	})
