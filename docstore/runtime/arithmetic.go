@@ -101,3 +101,14 @@ func Divide(left interface{}, right interface{}) interface{} {
 		panic("divide does not support " + reflect.TypeOf(left).String())
 	}
 }
+
+func NegativeOf(val interface{}) interface{} {
+	switch typedVal := val.(type) {
+	case int:
+		return -typedVal
+	case float64:
+		return -typedVal
+	default:
+		panic("negativeOf does not support " + reflect.TypeOf(val).String())
+	}
+}

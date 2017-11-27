@@ -32,7 +32,7 @@ func Test_account(t *testing.T) {
 	}
 	`).Command("charge", `
 	function handle(doc, req) {
-		if (doc.account_type === 'vip') {
+		if (doc.account_type == 'vip') {
 			if (doc.amount - req.charge < -10) {
 				throw 'vip account can not below -10';
 			}

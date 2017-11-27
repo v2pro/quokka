@@ -226,6 +226,8 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.translateCallExpression(typedExpr)
 	case *ast.BinaryExpression:
 		tl.translateBinaryExpression(typedExpr.Operator.String(), typedExpr.Left, typedExpr.Right)
+	case *ast.UnaryExpression:
+		tl.translateUnaryExpression(typedExpr)
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}
@@ -311,19 +313,21 @@ func (tl *translator) translateCallExpression(expr *ast.CallExpression) {
 	tl.output = append(tl.output, ')')
 }
 
-var arithmeticFuncs = map[string]string{
-	"+": "Add",
-	"-": "Subtract",
-	"*": "Multiply",
-	"/": "Divide",
-	">": "GT",
-	">=": "GE",
-	"<": "GT",
-	"<=": "GE",
+var binaryOperators = map[string]string{
+	"+":   "Add",
+	"-":   "Subtract",
+	"*":   "Multiply",
+	"/":   "Divide",
+	">":   "GT",
+	">=":  "GE",
+	"<":   "GT",
+	"<=":  "GE",
+	"==":  "EQ",
+	"===": "EQ",
 }
 
 func (tl *translator) translateBinaryExpression(operator string, left ast.Expression, right ast.Expression) {
-	funcName := arithmeticFuncs[operator]
+	funcName := binaryOperators[operator]
 	if funcName == "" {
 		tl.reportError(left, "do not support operator "+operator)
 		return
@@ -334,6 +338,24 @@ func (tl *translator) translateBinaryExpression(operator string, left ast.Expres
 	tl.translateExpression(left)
 	tl.output = append(tl.output, ", "...)
 	tl.translateExpression(right)
+	tl.output = append(tl.output, ')')
+}
+
+var unaryOperators = map[string]string{
+	"-": "NegativeOf",
+}
+
+func (tl *translator) translateUnaryExpression(expr *ast.UnaryExpression) {
+	operator := expr.Operator.String()
+	funcName := unaryOperators[operator]
+	if funcName == "" {
+		tl.reportError(expr, "do not support operator "+operator)
+		return
+	}
+	tl.output = append(tl.output, "runtime."...)
+	tl.output = append(tl.output, funcName...)
+	tl.output = append(tl.output, '(')
+	tl.translateExpression(expr.Operand)
 	tl.output = append(tl.output, ')')
 }
 

@@ -51,6 +51,13 @@ func Test_compile(t *testing.T) {
 	doc['val'] <= 0;
 	return null;
 	`, runtime.NewObject("val", 0), nil},
+		{"string comparison", `
+	doc['val'] = "hello";
+	if (doc['val'] == "hello") {
+		doc['val'] = "world";
+	}
+	return null;
+	`, runtime.NewObject("val", "world"), nil},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.title, func(t *testing.T) {
