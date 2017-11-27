@@ -13,11 +13,16 @@ import (
 	"strings"
 )
 
-var Mux = &http.ServeMux{}
+var mux = &http.ServeMux{}
 
 func init() {
-	Mux.HandleFunc("/docstore/exec", exec)
-	Mux.HandleFunc("/docstore/", exec)
+	mux.HandleFunc("/docstore/exec", exec)
+	mux.HandleFunc("/docstore/", exec)
+}
+
+func StartNode(addr string) {
+	go http.ListenAndServe(addr, mux)
+
 }
 
 func exec(respWriter http.ResponseWriter, req *http.Request) {

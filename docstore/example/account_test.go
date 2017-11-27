@@ -9,9 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"github.com/json-iterator/go"
+	"github.com/v2pro/quokka/kvstore/memkv"
 )
 
 func Test_account(t *testing.T) {
+	memkv.ResetKVStore()
 	docstore.Entity("Account", `
 	struct Doc {
 		1: i64 amount
@@ -54,7 +56,7 @@ func Test_account(t *testing.T) {
 	`)
 	go http.ListenAndServe("127.0.0.1:2515", docstore.Mux)
 	time.Sleep(time.Second)
-	post(t, "http://127.0.0.1:2515/Account/create", `
+	post(t, "http://127.0.0.1:2515/docstore/Account/create", `
 {
 	"EntityId": "123",
 	"CommandRequest": {
@@ -63,7 +65,7 @@ func Test_account(t *testing.T) {
 	}
 }
 	`)
-	post(t, "http://127.0.0.1:2515/Account/charge", `
+	post(t, "http://127.0.0.1:2515/docstore/Account/charge", `
 {
 	"EntityId": "123",
 	"CommandId": "acvx",
@@ -81,4 +83,5 @@ func post(t *testing.T, url string, req string) {
 	body, err := ioutil.ReadAll(resp.Body)
 	should.Nil(err)
 	should.Equal("", jsoniter.Get(body, "errmsg").ToString())
+	should.Equal(0, jsoniter.Get(body, "errno").MustBeValid().ToInt())
 }

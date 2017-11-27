@@ -1,4 +1,4 @@
-package docstore
+package memkv
 
 import (
 	"github.com/v2pro/quokka/kvstore"
@@ -7,26 +7,28 @@ import (
 
 type memRow []byte
 type memPartition [][]byte
+
 var memPartitions = make([]memPartition, kvstore.PartitionsCount)
-var memMetadata = map[string][]byte{}
+var memMetadata = []*kvstore.MetadataRow{}
 var memMonotonics = []map[string]uint64{}
 
-func resetMemKVStore() {
+func ResetKVStore() {
 	memPartitions = make([]memPartition, kvstore.PartitionsCount)
 	memMonotonics = make([]map[string]uint64, kvstore.PartitionsCount)
 	for i := 0; i < len(memMonotonics); i++ {
 		memMonotonics[i] = map[string]uint64{}
 	}
-	memMetadata = map[string][]byte{}
+	memMetadata = []*kvstore.MetadataRow{}
 	kvstore.Get = memGet
 	kvstore.Append = memAppend
 	kvstore.GetMetadata = memGetMetadata
 	kvstore.SetMetadata = memSetMetadata
+	kvstore.ScanMetadata = memScanMetadata
 	kvstore.GetMonotonic = memGetMonotonic
 	kvstore.SetMonotonic = memSetMonotonic
 }
 
-func memGet(partition uint64, rowKey uint64) ([]byte, error)  {
+func memGet(partition uint64, rowKey uint64) ([]byte, error) {
 	if partition < 0 || partition >= uint64(len(memPartitions)) {
 		return nil, errors.New("partition not found")
 	}
@@ -54,12 +56,38 @@ func memAppend(partition uint64, rowKey uint64, rowValue []byte) error {
 }
 
 func memGetMetadata(key string) ([]byte, error) {
-	return memMetadata[key], nil
+	for _, row := range memMetadata {
+		if row.Key == key {
+			return row.Value, nil
+		}
+	}
+	return nil, errors.New("not found")
 }
 
 func memSetMetadata(key string, value []byte) error {
-	memMetadata[key] = value
+	for _, row := range memMetadata {
+		if row.Key == key {
+			row.Value = value
+			return nil
+		}
+	}
+	memMetadata = append(memMetadata, &kvstore.MetadataRow{
+		Key:   key,
+		Value: value,
+	})
 	return nil
+}
+
+func memScanMetadata(fromKey string, toKey string) (kvstore.MetadataRowIterator, error) {
+	return func() ([]kvstore.MetadataRow, error) {
+		found := []kvstore.MetadataRow{}
+		for _, row := range memMetadata {
+			if row.Key >= fromKey && row.Key < toKey {
+				found = append(found, *row)
+			}
+		}
+		return found, nil
+	}, nil
 }
 
 func memGetMonotonic(partition uint64, key string) (uint64, error) {

@@ -6,6 +6,7 @@ import (
 )
 
 const PartitionsCount = 997
+
 var KeyConflictError = errors.New("key conflict")
 
 func HashToPartition(entityId string) uint64 {
@@ -22,7 +23,7 @@ type Row struct {
 }
 type RowIterator func() ([]Row, error)
 
-var Get = func(partition uint64, rowKey uint64) ([]byte, error) {
+var Get = func(partition uint64, key uint64) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -30,12 +31,19 @@ var Scan = func(partition uint64, fromRowKey uint64) (RowIterator, error) {
 	return nil, errors.New("not implemented")
 }
 
-var Append = func(partition uint64, rowKey uint64, rowValue []byte) error {
+var Append = func(partition uint64, key uint64, rowValue []byte) error {
 	return errors.New("not implemented")
 }
 
 // metadata:
 // partition master and slaves
+// server heartbeats
+
+type MetadataRow struct {
+	Key   string
+	Value []byte
+}
+type MetadataRowIterator func() ([]MetadataRow, error)
 
 var GetMetadata = func(key string) ([]byte, error) {
 	return nil, errors.New("not implemented")
@@ -43,6 +51,11 @@ var GetMetadata = func(key string) ([]byte, error) {
 
 var SetMetadata = func(key string, value []byte) error {
 	return errors.New("not implemented")
+}
+
+// [fromKey, toKey] ordered lexically
+var ScanMetadata = func(fromKey string, toKey string) (MetadataRowIterator, error) {
+	return nil, errors.New("not implemented")
 }
 
 // entity lookup:
