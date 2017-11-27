@@ -36,7 +36,19 @@ func translate(input string) (string, error) {
 package main
 import "github.com/v2pro/quokka/docstore/runtime"
 
-func Fn(doc interface{}, req interface{}) interface{} {
+func Fn(doc interface{}, req interface{}) (ret interface{}) {
+	defer func() {
+		recovered := recover()
+		if recovered != nil {
+			ret = recovered
+			jsErr, _ := recovered.(*runtime.JavascriptError)
+			if jsErr != nil {
+				if _, isThrown := jsErr.Recovered.(runtime.Thrown); isThrown {
+					ret = jsErr.Recovered
+				}
+			}
+		}
+	}()
 	return handle(doc, req)
 }
 `)
@@ -154,6 +166,9 @@ func (tl *translator) translateStatement(stmt ast.Statement) {
 	case *ast.ReturnStatement:
 		tl.hasReturnValue = true
 		tl.translateReturnStatement(typedStmt)
+	case *ast.ThrowStatement:
+		tl.hasReturnValue = true
+		tl.translateThrowStatement(typedStmt)
 	default:
 		tl.reportError(stmt, "can not handle "+reflect.TypeOf(stmt).String())
 	}
@@ -161,6 +176,12 @@ func (tl *translator) translateStatement(stmt ast.Statement) {
 func (tl *translator) translateReturnStatement(stmt *ast.ReturnStatement) {
 	tl.output = append(tl.output, "return "...)
 	tl.translateExpression(stmt.Argument)
+}
+
+func (tl *translator) translateThrowStatement(stmt *ast.ThrowStatement) {
+	tl.output = append(tl.output, "panic(runtime.Thrown{"...)
+	tl.translateExpression(stmt.Argument)
+	tl.output = append(tl.output, "})"...)
 }
 
 func (tl *translator) translateBlockStatement(stmt *ast.BlockStatement) {

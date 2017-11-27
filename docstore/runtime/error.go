@@ -4,43 +4,50 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"strings"
+	"github.com/v2pro/plz/countlog"
+	"encoding/json"
 )
 
 const jsExtraHead = 15
 
-type jsError struct {
+type JavascriptError struct {
 	funcName    string
 	targetJsSrc string
 	targetGoSrc string
-	recovered   interface{}
+	Recovered   interface{}
 }
 
-func (err *jsError) String() string {
+func (err *JavascriptError) Error() string {
+	return err.String()
+}
+
+func (err *JavascriptError) String() string {
 	return fmt.Sprintf("funcName:\n%s\njavascript source:\n%s\n===\ngo source:\n%s\n===\nerror: %v",
-		err.funcName, err.targetJsSrc, err.targetGoSrc, err.recovered)
+		err.funcName, err.targetJsSrc, err.targetGoSrc, err.Recovered)
+}
+
+type Thrown struct {
+	Value interface{}
+}
+
+func (thrown Thrown) Error() string {
+	return fmt.Sprintf("%v", thrown.Value)
+}
+
+func (thrown Thrown) MarshalJSON() ([]byte, error) {
+	return json.Marshal(thrown.Value)
 }
 
 func ReportError(funcName string, jsSrc string, jsOffsets []int, goSrc string, goOffsets []int,
 	absoluteLineNo int, recovered interface{}) {
-	if _, isJsError := recovered.(*jsError); isJsError {
+	if _, isJsError := recovered.(*JavascriptError); isJsError {
 		panic(recovered)
 	}
-	_, targetFile, _, _ := goruntime.Caller(1)
-	pc := make([]uintptr, 256)
-	pc = pc[:goruntime.Callers(2, pc)]
-	frames := goruntime.CallersFrames(pc)
-	line := -1
-	suffix := "." + funcName
-	for {
-		frame, more := frames.Next()
-		if frame.File == targetFile && len(frame.Function) >= len(suffix) &&
-			frame.Function[len(frame.Function)-len(suffix):] == suffix {
-			line = frame.Line
-		}
-		if !more {
-			break
-		}
+	targetFile, frames := listFrames()
+	if frames == nil {
+		panic(recovered)
 	}
+	line := searchFrame(frames, targetFile, funcName)
 	if line == -1 {
 		panic(recovered)
 	}
@@ -50,21 +57,58 @@ func ReportError(funcName string, jsSrc string, jsOffsets []int, goSrc string, g
 		panic(recovered)
 	}
 	startIndex, endIndex := searchGoOffsets(goOffsets, targetStart, targetEnd)
-	jsStart := jsOffsets[startIndex] - jsExtraHead
+	jsStart := jsOffsets[startIndex]
 	var targetJsSrc string
 	if endIndex == -1 {
 		targetJsSrc = jsSrc[jsStart:]
 	} else {
-		jsEnd := jsOffsets[endIndex] - jsExtraHead
+		jsEnd := jsOffsets[endIndex]
 		targetJsSrc = jsSrc[jsStart:jsEnd]
 	}
 	targetJsSrc = strings.TrimSpace(targetJsSrc)
-	panic(&jsError{
+	panic(&JavascriptError{
 		funcName:    funcName,
 		targetGoSrc: targetGoSrc,
 		targetJsSrc: targetJsSrc,
-		recovered:   recovered,
+		Recovered:   recovered,
 	})
+}
+
+func listFrames() (string, []*goruntime.Frame) {
+	pc := make([]uintptr, 256)
+	pc = pc[:goruntime.Callers(2, pc)]
+	framesIter := goruntime.CallersFrames(pc)
+	suffix := ".Fn" // entry point of generated code
+	frames := []*goruntime.Frame{}
+	for {
+		frame, more := framesIter.Next()
+		if len(frame.Function) >= len(suffix) &&
+			frame.Function[len(frame.Function)-len(suffix):] == suffix {
+			return frame.File, frames
+		}
+		frames = append(frames, &frame)
+		if !more {
+			break
+		}
+	}
+	return "", nil
+}
+
+func searchFrame(frames []*goruntime.Frame, targetFile string, funcName string) int {
+	suffix := "." + funcName
+	for _, frame := range frames {
+		if frame.File != targetFile {
+			continue
+		}
+		if len(frame.Function) >= len(suffix) &&
+			frame.Function[len(frame.Function)-len(suffix):] == suffix {
+			countlog.Trace("event!runtime.found panic frame", "funcName", funcName,
+				"file", frame.File, "line", frame.Line)
+			return frame.Line
+		}
+	}
+	countlog.Warn("event!runtime.panic frame not found", "funcName", funcName)
+	return -1
 }
 
 func searchLine(str string, targetLine int) (string, int, int) {

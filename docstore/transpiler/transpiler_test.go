@@ -29,6 +29,9 @@ func Test_compile(t *testing.T) {
 	doc.hello='world';
 	return doc.hello;
 	`, runtime.NewObject("hello", "world"), "world"},
+		{"throw error",`
+	throw 'hello';
+	`, runtime.NewObject(), "hello"},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.title, func(t *testing.T) {
