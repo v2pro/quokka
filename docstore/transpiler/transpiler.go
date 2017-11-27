@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"fmt"
 	"bytes"
+	"github.com/robertkrimen/otto/file"
 )
 
 func Compile(input string) (func(doc interface{}, req interface{}) interface{}, error) {
@@ -35,17 +36,20 @@ func translate(input string) (string, error) {
 	output := []byte(`
 package main
 import "github.com/v2pro/quokka/docstore/runtime"
+import "fmt"
 
 func Fn(doc interface{}, req interface{}) (ret interface{}) {
 	defer func() {
 		recovered := recover()
 		if recovered != nil {
-			ret = recovered
 			jsErr, _ := recovered.(*runtime.JavascriptError)
 			if jsErr != nil {
+				ret = recovered
 				if _, isThrown := jsErr.Recovered.(runtime.Thrown); isThrown {
 					ret = jsErr.Recovered
 				}
+			} else {
+				ret = fmt.Errorf("unknown error: %v", recovered)
 			}
 		}
 	}()
@@ -95,6 +99,7 @@ type translator struct {
 	goSrc          []byte
 	err            error
 	hasReturnValue bool
+	bodyStartIdx   file.Idx
 }
 
 func (tl *translator) reportError(node ast.Node, errmsg string) {
@@ -107,6 +112,7 @@ func (tl *translator) translate(funcName string, paramNames []string, absoluteLi
 		tl.err = err
 		return
 	}
+	tl.bodyStartIdx = funcLiteral.Body.Idx0() + 2
 	tl.translateStatement(funcLiteral.Body)
 	tl.goSrc = tl.output
 	tl.output = []byte(`func `)
@@ -186,7 +192,7 @@ func (tl *translator) translateThrowStatement(stmt *ast.ThrowStatement) {
 
 func (tl *translator) translateBlockStatement(stmt *ast.BlockStatement) {
 	for _, child := range stmt.List {
-		tl.jsOffsets = append(tl.jsOffsets, int(child.Idx0()))
+		tl.jsOffsets = append(tl.jsOffsets, int(child.Idx0()-tl.bodyStartIdx))
 		tl.goOffsets = append(tl.goOffsets, len(tl.output))
 		tl.translateStatement(child)
 		tl.output = append(tl.output, '\n')
@@ -213,6 +219,8 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.output = append(tl.output, "nil"...)
 	case *ast.CallExpression:
 		tl.translateCallExpression(typedExpr)
+	case *ast.BinaryExpression:
+		tl.translateBinaryExpression(typedExpr)
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}
@@ -287,4 +295,24 @@ func (tl *translator) translateCallExpression(expr *ast.CallExpression) {
 		tl.translateExpression(arg)
 	}
 	tl.output = append(tl.output, ')')
+}
+
+func (tl *translator) translateBinaryExpression(expr *ast.BinaryExpression) {
+	operator := expr.Operator.String()
+	switch operator {
+	case "+":
+		tl.output = append(tl.output, "runtime.Add("...)
+		tl.translateExpression(expr.Left)
+		tl.output = append(tl.output, ", "...)
+		tl.translateExpression(expr.Right)
+		tl.output = append(tl.output, ')')
+	case "-":
+		tl.output = append(tl.output, "runtime.Subtract("...)
+		tl.translateExpression(expr.Left)
+		tl.output = append(tl.output, ", "...)
+		tl.translateExpression(expr.Right)
+		tl.output = append(tl.output, ')')
+	default:
+		tl.reportError(expr, "do not support operator "+operator)
+	}
 }

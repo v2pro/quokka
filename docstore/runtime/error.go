@@ -5,10 +5,7 @@ import (
 	goruntime "runtime"
 	"strings"
 	"github.com/v2pro/plz/countlog"
-	"encoding/json"
 )
-
-const jsExtraHead = 15
 
 type JavascriptError struct {
 	funcName    string
@@ -22,8 +19,27 @@ func (err *JavascriptError) Error() string {
 }
 
 func (err *JavascriptError) String() string {
-	return fmt.Sprintf("funcName:\n%s\njavascript source:\n%s\n===\ngo source:\n%s\n===\nerror: %v",
+	return fmt.Sprintf("function:\n%s\njavascript source:\n%s\n===\ngo source:\n%s\n===\nerror: %v",
 		err.funcName, err.targetJsSrc, err.targetGoSrc, err.Recovered)
+}
+
+func (err *JavascriptError) MarshalJSON() ([]byte, error) {
+	stream := Json.BorrowStream(nil)
+	defer Json.ReturnStream(stream)
+	stream.WriteObjectStart()
+	stream.WriteObjectField("function")
+	stream.WriteVal(err.funcName)
+	stream.WriteMore()
+	stream.WriteObjectField("javascript source")
+	stream.WriteVal(err.targetJsSrc)
+	stream.WriteMore()
+	stream.WriteObjectField("go source")
+	stream.WriteVal(err.targetGoSrc)
+	stream.WriteMore()
+	stream.WriteObjectField("error")
+	stream.WriteVal(err.Recovered)
+	stream.WriteObjectEnd()
+	return stream.Buffer(), stream.Error
 }
 
 type Thrown struct {
@@ -35,7 +51,7 @@ func (thrown Thrown) Error() string {
 }
 
 func (thrown Thrown) MarshalJSON() ([]byte, error) {
-	return json.Marshal(thrown.Value)
+	return Json.Marshal(thrown.Value)
 }
 
 func ReportError(funcName string, jsSrc string, jsOffsets []int, goSrc string, goOffsets []int,
@@ -45,16 +61,25 @@ func ReportError(funcName string, jsSrc string, jsOffsets []int, goSrc string, g
 	}
 	targetFile, frames := listFrames()
 	if frames == nil {
-		panic(recovered)
+		panic(&JavascriptError{
+			funcName:    funcName,
+			Recovered:   recovered,
+		})
 	}
 	line := searchFrame(frames, targetFile, funcName)
 	if line == -1 {
-		panic(recovered)
+		panic(&JavascriptError{
+			funcName:    funcName,
+			Recovered:   recovered,
+		})
 	}
 	targetLine := line - absoluteLineNo - 9
 	targetGoSrc, targetStart, targetEnd := searchLine(goSrc, targetLine)
 	if targetGoSrc == "" {
-		panic(recovered)
+		panic(&JavascriptError{
+			funcName:    funcName,
+			Recovered:   recovered,
+		})
 	}
 	startIndex, endIndex := searchGoOffsets(goOffsets, targetStart, targetEnd)
 	jsStart := jsOffsets[startIndex]
