@@ -13,28 +13,28 @@ func Test_compile(t *testing.T) {
 		expectedDoc  interface{}
 		expectedResp interface{}
 	}{
-	//	{"set string", `
-	//doc['hello']='world';
-	//return nil;
-	//`, runtime.NewObject("hello", "world"), nil},
-	//	{"set object",`
-	//doc['hello']={1:2.1};
-	//return nil;
-	//`, runtime.NewObject("hello", runtime.NewObject("1", 2.1)), nil},
-	//	{"get string",`
-	//doc['hello']='world';
-	//return doc['hello'];
-	//`, runtime.NewObject("hello", "world"), "world"},
-	//	{"get set by dot",`
-	//doc.hello='world';
-	//return doc.hello;
-	//`, runtime.NewObject("hello", "world"), "world"},
-	//	{"throw error",`
-	//throw 'hello';
-	//`, runtime.NewObject(), "hello"},
+		{"set string", `
+	doc['hello']='world';
+	return nil;
+	`, runtime.NewObject("hello", "world"), nil},
+		{"set object",`
+	doc['hello']={1:2.1};
+	return nil;
+	`, runtime.NewObject("hello", runtime.NewObject("1", 2.1)), nil},
+		{"get string",`
+	doc['hello']='world';
+	return doc['hello'];
+	`, runtime.NewObject("hello", "world"), "world"},
+		{"get set by dot",`
+	doc.hello='world';
+	return doc.hello;
+	`, runtime.NewObject("hello", "world"), "world"},
+		{"throw error",`
+	throw 'hello';
+	`, runtime.NewObject(), "hello"},
 		{"arithmetic",`
-	return 1+1-1;
-	`, runtime.NewObject(), 1},
+	return (1+1-1*5) / 3;
+	`, runtime.NewObject(), float64(-1)},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.title, func(t *testing.T) {

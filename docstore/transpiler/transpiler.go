@@ -312,6 +312,18 @@ func (tl *translator) translateBinaryExpression(expr *ast.BinaryExpression) {
 		tl.output = append(tl.output, ", "...)
 		tl.translateExpression(expr.Right)
 		tl.output = append(tl.output, ')')
+	case "*":
+		tl.output = append(tl.output, "runtime.Multiply("...)
+		tl.translateExpression(expr.Left)
+		tl.output = append(tl.output, ", "...)
+		tl.translateExpression(expr.Right)
+		tl.output = append(tl.output, ')')
+	case "/":
+		tl.output = append(tl.output, "runtime.Divide("...)
+		tl.translateExpression(expr.Left)
+		tl.output = append(tl.output, ", "...)
+		tl.translateExpression(expr.Right)
+		tl.output = append(tl.output, ')')
 	default:
 		tl.reportError(expr, "do not support operator "+operator)
 	}
