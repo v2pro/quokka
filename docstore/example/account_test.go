@@ -15,37 +15,61 @@ func Test_account(t *testing.T) {
 	docstore.Entity("Account", `
 	struct Doc {
 		1: i64 amount
+		2: string account_type
 	}
 	`).Command("create", `
-	return null;
+	function handle(doc, req) {
+		doc.amount = req.amount;
+		doc.account_type = req.account_type;
+		return null;
+	}
 	`, `
 	struct Request {
+		1: i64 amount
+		2: string account_type
 	}
 	struct Response {
 	}
 	`).Command("charge", `
-	return null;
+	function handle(doc, req) {
+		if (doc.account_type === 'vip') {
+			if (doc.amount - req.charge < -10) {
+				throw 'vip account can not below -10';
+			}
+		} else {
+			if (doc.amount - req.charge < 0) {
+				throw 'normal account can not below 0';
+			}
+		}
+		doc.amount -= req.charge;
+		return {remaining_amount: doc.amount};
+	}
 	`, `
 	struct Request {
+		1: i64 charge
 	}
 	struct Response {
+		1: i64 remaining_amount
 	}
 	`)
 	go http.ListenAndServe("127.0.0.1:2515", docstore.Mux)
 	time.Sleep(time.Second)
-	post(t, "http://127.0.0.1:2515/exec", `
+	post(t, "http://127.0.0.1:2515/Account/create", `
 {
-	"EntityType": "Account",
 	"EntityId": "123",
-	"CommandType": "create"
+	"CommandRequest": {
+		"amount": 100,
+		"account_type": "vip"
+	}
 }
 	`)
-	post(t, "http://127.0.0.1:2515/exec", `
+	post(t, "http://127.0.0.1:2515/Account/charge", `
 {
-	"EntityType": "Account",
 	"EntityId": "123",
-	"CommandType": "charge",
-	"CommandRequest": 1
+	"CommandId": "acvx",
+	"CommandRequest": {
+		"charge": 10
+	}
 }
 	`)
 }

@@ -6,41 +6,41 @@ import (
 	"github.com/v2pro/quokka/docstore/runtime"
 )
 
-func Test_set_string(t *testing.T) {
-	should := require.New(t)
-	fn, err := Compile(`
-	function handle(doc, req) {
-		doc['hello']='world';
-		return nil;
-	}
-	`)
-	should.Nil(err)
-	obj := runtime.NewObject()
-	fn(obj, nil)
-	should.Equal("world", runtime.Get(obj, "hello"))
-}
-
-func Test_set_object(t *testing.T) {
-	should := require.New(t)
-	fn, err := Compile(`
+func Test_compile(t *testing.T) {
+	fixtures := []struct {
+		title        string
+		src          string
+		expectedDoc  interface{}
+		expectedResp interface{}
+	}{
+		{"set string", `
+	doc['hello']='world';
+	return nil;
+	`, runtime.NewObject("hello", "world"), nil},
+		{"set object",`
 	doc['hello']={1:2.1};
 	return nil;
-	`)
-	should.Nil(err)
-	obj := runtime.NewObject()
-	fn(obj, nil)
-	should.Equal(2.1, runtime.Get(obj, "hello", "1"))
-}
-
-func Test_get_field(t *testing.T) {
-	should := require.New(t)
-	fn, err := Compile(`
+	`, runtime.NewObject("hello", runtime.NewObject("1", 2.1)), nil},
+		{"get string",`
+	doc['hello']='world';
 	return doc['hello'];
-	`)
-	should.Nil(err)
-	obj := runtime.NewObject()
-	obj.Set("hello", "world")
-	should.Equal("world", fn(obj, nil))
+	`, runtime.NewObject("hello", "world"), "world"},
+		{"get set by dot",`
+	doc.hello='world';
+	return doc.hello;
+	`, runtime.NewObject("hello", "world"), "world"},
+	}
+	for _, fixture := range fixtures {
+		t.Run(fixture.title, func(t *testing.T) {
+			should := require.New(t)
+			fn, err := Compile("function handle(doc, req) {\n" + fixture.src + "\n}")
+			should.Nil(err)
+			doc := runtime.NewObject()
+			resp := fn(doc, nil)
+			should.Equal(runtime.Dump(fixture.expectedDoc), runtime.Dump(doc))
+			should.Equal(runtime.Dump(fixture.expectedResp), runtime.Dump(resp))
+		})
+	}
 }
 
 func Test_sub_function(t *testing.T) {

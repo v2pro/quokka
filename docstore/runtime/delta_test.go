@@ -19,15 +19,6 @@ func clone(obj interface{}) interface{} {
 	return cloned
 }
 
-func dump(obj interface{}) string {
-	// DebugJson sorts map key, so it is stable to compare
-	encoded, err := DebugJson.MarshalToString(obj)
-	if err != nil {
-		panic(err)
-	}
-	return encoded
-}
-
 func Test_update_root(t *testing.T) {
 	should := require.New(t)
 	obj := NewObject()
@@ -40,7 +31,7 @@ func Test_update_root(t *testing.T) {
 	should.Nil(err)
 	should.Equal(`{"__updated__":{"hello":"world"}}`, delta)
 	should.Nil(DeltaJson.UnmarshalFromString(delta, &origObj))
-	should.Equal(dump(obj), dump(origObj))
+	should.Equal(Dump(obj), Dump(origObj))
 }
 
 func Test_patch_one_level(t *testing.T) {
@@ -54,8 +45,8 @@ func Test_patch_one_level(t *testing.T) {
 	delta, err := DeltaJson.MarshalToString(root)
 	should.Nil(err)
 	should.Equal(`{"__patched__":{"leaf":{"__updated__":{"hello":"world"}}}}`, delta)
-	fmt.Println(dump(origRoot))
+	fmt.Println(Dump(origRoot))
 	should.Nil(DeltaJson.UnmarshalFromString(delta, &origRoot))
-	fmt.Println(dump(origRoot))
-	should.Equal(dump(root), dump(origRoot))
+	fmt.Println(Dump(origRoot))
+	should.Equal(Dump(root), Dump(origRoot))
 }

@@ -164,3 +164,12 @@ func (encoder *arrayEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream)
 	obj := (*DArray)(ptr)
 	stream.WriteVal(obj.data)
 }
+
+func Dump(obj interface{}) string {
+	// DebugJson sorts map key, so it is stable to compare
+	encoded, err := DebugJson.MarshalToString(obj)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
+}

@@ -182,6 +182,8 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.output = append(tl.output, typedExpr.Name...)
 	case *ast.BracketExpression:
 		tl.translateBracketExpression(typedExpr)
+	case *ast.DotExpression:
+		tl.translateDotExpression(typedExpr)
 	case *ast.ObjectLiteral:
 		tl.translateObjectLiteral(typedExpr)
 	case *ast.NumberLiteral:
@@ -193,6 +195,14 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}
+}
+
+func (tl *translator) translateDotExpression(expr *ast.DotExpression) {
+	tl.output = append(tl.output, `runtime.AsObj(`...)
+	tl.translateExpression(expr.Left)
+	tl.output = append(tl.output, `).Get("`...)
+	tl.output = append(tl.output, expr.Identifier.Name...)
+	tl.output = append(tl.output, `")`...)
 }
 
 func (tl *translator) translateBracketExpression(expr *ast.BracketExpression) {
@@ -211,6 +221,14 @@ func (tl *translator) translateAssignExpression(expr *ast.AssignExpression) {
 		tl.output = append(tl.output, ").Set("...)
 		tl.translateExpression(leftExpr.Member)
 		tl.output = append(tl.output, ", "...)
+		tl.translateExpression(expr.Right)
+		tl.output = append(tl.output, ')')
+	case *ast.DotExpression:
+		tl.output = append(tl.output, `runtime.AsObj(`...)
+		tl.translateExpression(leftExpr.Left)
+		tl.output = append(tl.output, `).Set("`...)
+		tl.output = append(tl.output, leftExpr.Identifier.Name...)
+		tl.output = append(tl.output, `", `...)
 		tl.translateExpression(expr.Right)
 		tl.output = append(tl.output, ')')
 	default:
