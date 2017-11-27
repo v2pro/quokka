@@ -6,24 +6,26 @@ import (
 	"github.com/json-iterator/go"
 	"net/http"
 	"time"
-	"strings"
 	"io/ioutil"
+	"github.com/v2pro/quokka/docstore/runtime"
+	"bytes"
 )
 
 func Test_entity_command_url(t *testing.T) {
-	should := require.New(t)
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
 	StartNode("127.0.0.1:2515")
 	time.Sleep(time.Second)
-	resp, err := http.Post("http://127.0.0.1:2515/docstore/user/create", "application/json",
-		strings.NewReader(`
-{
-	"EntityId": "123"
+	post(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
 }
-		`))
+
+func post(t *testing.T, url string, kv ...interface{}) {
+	should := require.New(t)
+	req, err := runtime.Json.Marshal(runtime.NewObject(kv...))
+	should.Nil(err)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(req))
 	should.Nil(err)
 	body, err := ioutil.ReadAll(resp.Body)
 	should.Nil(err)

@@ -41,7 +41,9 @@ func cloneTCPAddr(addr *net.TCPAddr) *net.TCPAddr {
 	return &copied
 }
 
-func newNode(addr string) *node {
+var theNode *node
+
+func newNode(addr *net.TCPAddr) *node {
 	return &node{status: nodeStatus{Addr: addr}}
 }
 
@@ -71,9 +73,9 @@ func (node *node) setTopo(topo topo) {
 	atomic.StorePointer(&node.topo, (unsafe.Pointer)(&topo))
 }
 
-func (node *node) getMaster(partition uint64) (*net.TCPAddr, error) {
+func (node *node) getMaster(partition uint64) (*net.TCPAddr, bool, error) {
 	if partition < 0 || partition >= kvstore.PartitionsCount {
-		return nil, errors.New("partition out of range")
+		return nil, false, errors.New("partition out of range")
 	}
 	var err error
 	partitionNodes := node.partition(partition)
@@ -86,13 +88,17 @@ func (node *node) getMaster(partition uint64) (*net.TCPAddr, error) {
 		}
 	}
 	if partitionNodes.Master != nil {
-		return partitionNodes.Master, nil
+		return partitionNodes.Master, false, nil
 	}
-	return node.promotePartitionMaster(partition)
+	master, err := node.promoteMaster(partition)
+	if err != nil {
+		return nil, false, err
+	}
+	return master, true, err
 }
 
 func (node *node) refreshPartition(partition uint64) (partitionNodes, error) {
-	metadataKey := fmt.Sprintf("partition_%v_servers", partition)
+	metadataKey := fmt.Sprintf("partition_%v", partition)
 	encodedServers, err := kvstore.GetMetadata(metadataKey)
 	if err != nil {
 		countlog.Error("event!topo.failed to get servers",
@@ -102,11 +108,11 @@ func (node *node) refreshPartition(partition uint64) (partitionNodes, error) {
 		return partitionNodes{}, err
 	}
 	if len(encodedServers) == 0 {
-		countlog.Error("event!topo.received empty server list",
+		countlog.Warn("event!topo.partition node list is empty",
 			"partition", partition,
 			"metadataKey", metadataKey,
 			"encodedServers", encodedServers)
-		return partitionNodes{}, errors.New("received empty server list")
+		return partitionNodes{}, nil
 	}
 	var servers partitionNodes
 	err = jsoniter.Unmarshal(encodedServers, &servers)
@@ -124,7 +130,7 @@ func (node *node) refreshPartition(partition uint64) (partitionNodes, error) {
 	return servers, nil
 }
 
-func (node *node) promotePartitionMaster(partition uint64) (*net.TCPAddr, error) {
+func (node *node) promoteMaster(partition uint64) (*net.TCPAddr, error) {
 	nodes, err := queryCluster()
 	if err != nil {
 		return nil, err
@@ -142,7 +148,40 @@ func (node *node) promotePartitionMaster(partition uint64) (*net.TCPAddr, error)
 	if newMaster == nil {
 		return nil, errors.New("cluster has no usable node")
 	}
-	return net.ResolveTCPAddr("tcp", newMaster.Addr)
+	countlog.Info("event!topo.try to promote master",
+		"newMaster", newMaster.Addr, "partition", partition)
+	return newMaster.Addr, nil
+}
+
+func (node *node) promotedMaster(partition uint64) {
+	defer func() {
+		recovered := recover()
+		if recovered != nil {
+			countlog.Fatal("event!topo.promotedMaster.panic", "err", recovered,
+				"stacktrace", countlog.ProvideStacktrace)
+		}
+	}()
+	partitionNodes, err := node.refreshPartition(partition)
+	if err != nil {
+		countlog.Error("event!topo.failed to get topo partition for update",
+			"partition", partition, "err", err)
+		return
+	}
+	partitionNodes.Master = node.status.Addr
+	encodedPartitionNodes, err := jsoniter.Marshal(partitionNodes)
+	if err != nil {
+		countlog.Error("event!topo.failed to marshal partition nodes",
+			"partition", partition, "err", err)
+		return
+	}
+	metadataKey := fmt.Sprintf("partition_%v", partition)
+	err = kvstore.SetMetadata(metadataKey, encodedPartitionNodes)
+	if err != nil {
+		countlog.Error("event!topo.failed to save partition nodes",
+			"partition", partition, "err", err)
+		return
+	}
+	countlog.Info("event!topo.promoted master", "partition", partition, "master", node.status.Addr)
 }
 
 //func (node *node) setPartitionServers(partition uint64, servers *partitionNodes) error {

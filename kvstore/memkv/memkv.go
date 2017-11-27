@@ -61,7 +61,7 @@ func memGetMetadata(key string) ([]byte, error) {
 			return row.Value, nil
 		}
 	}
-	return nil, errors.New("not found")
+	return nil, nil
 }
 
 func memSetMetadata(key string, value []byte) error {

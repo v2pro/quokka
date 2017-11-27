@@ -4,11 +4,12 @@ import (
 	"github.com/v2pro/quokka/kvstore"
 	"github.com/json-iterator/go"
 	"time"
+	"net"
 )
 
 // stored in metadata server_[addr]
 type nodeStatus struct {
-	Addr                  string
+	Addr                  *net.TCPAddr
 	Heartbeat             time.Time
 	MasterPartitionsCount int
 	SlavePartitionsCount  int
@@ -22,7 +23,7 @@ func joinCluster(nodeStatus nodeStatus) error {
 	if err != nil {
 		return err
 	}
-	return kvstore.SetMetadata("node_"+nodeStatus.Addr, status)
+	return kvstore.SetMetadata("node_"+nodeStatus.Addr.String(), status)
 }
 
 // get other nodes

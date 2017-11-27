@@ -27,6 +27,7 @@ type command struct {
 	EntityId       string
 	CommandId      string
 	CommandRequest json.RawMessage
+	IsPromoting	   bool // update topo when command executed successfully
 	respChan       chan []byte
 }
 
@@ -87,12 +88,12 @@ func (processor *commandProcessor) executeOne() {
 	command.respChan <- resp
 }
 
-func (processor *commandProcessor) delegatedExec(execReq *command, timeout time.Duration) []byte {
-	execReq.respChan = make(chan []byte, 1)
+func (processor *commandProcessor) delegatedExec(cmd *command, timeout time.Duration) []byte {
+	cmd.respChan = make(chan []byte, 1)
 	timer := time.NewTimer(timeout)
 	select {
-	case processor.reqChan <- execReq:
-		resp := <-execReq.respChan
+	case processor.reqChan <- cmd:
+		resp := <-cmd.respChan
 		return resp
 	case <-timer.C:
 		return replyError(errors.New("timeout"))
@@ -103,13 +104,13 @@ func (processor *commandProcessor) init(execReq *command) {
 
 }
 
-func (processor *commandProcessor) exec(execReq *command) []byte {
+func (processor *commandProcessor) exec(cmd *command) []byte {
 	partition := processor.partition
-	entityId := execReq.EntityId
-	req := execReq.CommandRequest
-	entityType := execReq.EntityType
-	commandType := execReq.CommandType
-	commandId := execReq.CommandId
+	entityId := cmd.EntityId
+	req := cmd.CommandRequest
+	entityType := cmd.EntityType
+	commandType := cmd.CommandType
+	commandId := cmd.CommandId
 	var reqObj interface{}
 	var err error
 	if len(req) > 0 {
@@ -192,6 +193,9 @@ func (processor *commandProcessor) exec(execReq *command) []byte {
 	processor.commandLookup.cacheCommand(event.CommandId, encodedResp, event.EventId)
 	// up kv store lookup in separate goroutine
 	processor.lookupSyncer.enqueue(event)
+	if cmd.IsPromoting {
+		go theNode.promotedMaster(partition)
+	}
 	return replySuccess(encodedResp)
 }
 
