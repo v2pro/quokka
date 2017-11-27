@@ -79,7 +79,12 @@ func memSetMetadata(key string, value []byte) error {
 }
 
 func memScanMetadata(fromKey string, toKey string) (kvstore.MetadataRowIterator, error) {
+	returned := false
 	return func() ([]kvstore.MetadataRow, error) {
+		if returned {
+			return nil, nil
+		}
+		returned = true
 		found := []kvstore.MetadataRow{}
 		for _, row := range memMetadata {
 			if row.Key >= fromKey && row.Key < toKey {

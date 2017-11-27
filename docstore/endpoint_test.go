@@ -3,9 +3,7 @@ package docstore
 import (
 	"testing"
 	"github.com/stretchr/testify/require"
-	"github.com/v2pro/quokka/kvstore"
 	"github.com/json-iterator/go"
-	"net"
 	"net/http"
 	"time"
 	"strings"
@@ -18,15 +16,7 @@ func Test_entity_command_url(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	entityId := "123"
-	partition := kvstore.HashToPartition(entityId)
-	should.Nil(setPartitionServers(partition, &partitionServers{
-		Master: &net.TCPAddr{
-			IP:   net.ParseIP("127.0.0.1"),
-			Port: 2515,
-		},
-	}))
-	go http.ListenAndServe("127.0.0.1:2515", Mux)
+	StartNode("127.0.0.1:2515")
 	time.Sleep(time.Second)
 	resp, err := http.Post("http://127.0.0.1:2515/docstore/user/create", "application/json",
 		strings.NewReader(`

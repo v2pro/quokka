@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"github.com/json-iterator/go"
-	"net"
-	"github.com/v2pro/quokka/kvstore"
 )
 
 func Test_write_to_master(t *testing.T) {
@@ -18,15 +16,7 @@ func Test_write_to_master(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	entityId := "123"
-	partition := kvstore.HashToPartition(entityId)
-	should.Nil(setPartitionServers(partition, &partitionServers{
-		Master: &net.TCPAddr{
-			IP:   net.ParseIP("127.0.0.1"),
-			Port: 2515,
-		},
-	}))
-	go http.ListenAndServe("127.0.0.1:2515", Mux)
+	StartNode("127.0.0.1:2515")
 	time.Sleep(time.Second)
 	resp, err := http.Post("http://127.0.0.1:2515/docstore/exec", "application/json",
 		strings.NewReader(`
@@ -48,16 +38,8 @@ func Test_write_to_slave(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	entityId := "123"
-	partition := kvstore.HashToPartition(entityId)
-	should.Nil(setPartitionServers(partition, &partitionServers{
-		Master: &net.TCPAddr{
-			IP:   net.ParseIP("127.0.0.1"),
-			Port: 2515,
-		},
-	}))
-	go http.ListenAndServe("127.0.0.1:2515", Mux)
-	go http.ListenAndServe("127.0.0.1:2516", Mux)
+	StartNode("127.0.0.1:2515")
+	StartNode("127.0.0.1:2516")
 	time.Sleep(time.Second)
 	resp, err := http.Post("http://127.0.0.1:2516/docstore/exec", "application/json",
 		strings.NewReader(`

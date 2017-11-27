@@ -17,4 +17,7 @@ func Test_scan_metadata(t *testing.T) {
 	should.Nil(err)
 	should.Equal("1.2.3.4:8000", string(batch[0].Value))
 	should.Equal("1.2.3.4:8001", string(batch[1].Value))
+	batch, err = iter()
+	should.Nil(err)
+	should.Nil(batch)
 }

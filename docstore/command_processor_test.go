@@ -7,6 +7,7 @@ import (
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/v2pro/quokka/kvstore"
 	"github.com/rs/xid"
+	"github.com/v2pro/quokka/kvstore/memkv"
 )
 
 func Test_create_object(t *testing.T) {
@@ -56,7 +57,7 @@ func Test_get_object(t *testing.T) {
 }
 
 func reset(entityType string) *entityTypeDef {
-	resetMemKVStore()
+	memkv.ResetKVStore()
 	entityTypes = map[string]*entityTypeDef{}
 	return AddEntity(entityType, nil)
 }

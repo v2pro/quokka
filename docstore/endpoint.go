@@ -11,21 +11,45 @@ import (
 	"bytes"
 	"github.com/v2pro/quokka/kvstore"
 	"strings"
+	"github.com/v2pro/plz/countlog"
 )
 
-var mux = &http.ServeMux{}
-
-func init() {
-	mux.HandleFunc("/docstore/exec", exec)
-	mux.HandleFunc("/docstore/", exec)
-}
-
 func StartNode(addr string) {
+	node := newNode(addr)
+	var mux = &http.ServeMux{}
+	mux.HandleFunc("/docstore/ping", node.ping)
+	mux.HandleFunc("/docstore/exec", node.exec)
+	mux.HandleFunc("/docstore/", node.exec)
+	// will promote servers to master if needed
 	go http.ListenAndServe(addr, mux)
-
+	if !node.isAlive() {
+		countlog.Error("event!endpoint.failed to start node", "addr", addr)
+		return
+	}
+	// tell other servers about myself
+	joinCluster(node.status)
+	// continue update myself to let other servers know I am alive
+	// will step down from master if there are more servers available
+	go node.RebalanceInBackground()
 }
 
-func exec(respWriter http.ResponseWriter, req *http.Request) {
+func (node *node) isAlive() bool {
+	for i := 0; i < 3; i++ {
+		_, err := http.Get("http://" + node.status.Addr + "/docstore/ping")
+		if err != nil {
+			time.Sleep(time.Millisecond * 100)
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (node *node) ping(respWriter http.ResponseWriter, req *http.Request) {
+	respWriter.Write([]byte("pong"))
+}
+
+func (node *node) exec(respWriter http.ResponseWriter, req *http.Request) {
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		respWriter.Write(replyError(err))
@@ -48,7 +72,7 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	localAddr, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
 	partition := kvstore.HashToPartition(cmd.EntityId)
-	master, err := getMaster(partition)
+	master, err := node.getMaster(partition)
 	if err != nil {
 		respWriter.Write(replyError(err))
 		return
