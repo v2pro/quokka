@@ -17,28 +17,38 @@ func Test_compile(t *testing.T) {
 	doc['hello']='world';
 	return null;
 	`, runtime.NewObject("hello", "world"), nil},
-		{"set object",`
+		{"set object", `
 	doc['hello']={1:2.1};
 	return null;
 	`, runtime.NewObject("hello", runtime.NewObject("1", 2.1)), nil},
-		{"get string",`
+		{"get string", `
 	doc['hello']='world';
 	return doc['hello'];
 	`, runtime.NewObject("hello", "world"), "world"},
-		{"get set by dot",`
+		{"get set by dot", `
 	doc.hello='world';
 	return doc.hello;
 	`, runtime.NewObject("hello", "world"), "world"},
-		{"throw error",`
+		{"throw error", `
 	throw 'hello';
 	`, runtime.NewObject(), "hello"},
-		{"arithmetic",`
+		{"arithmetic", `
 	return (1+1-1*5) / 3;
 	`, runtime.NewObject(), float64(-1)},
-		{"-= and +=",`
+		{"-= and +=", `
+	doc['val'] = 0;
+	doc['val'] += 1;
+	doc['val'] -= 1;
+	return null;
+	`, runtime.NewObject("val", 0), nil},
+		{"number comparison", `
+	doc['val'] = 1;
+	if (doc['val'] > 0) {
 		doc['val'] = 0;
-		doc['val'] += 1;
-		doc['val'] -= 1;
+	}
+	doc['val'] >= 0;
+	doc['val'] < 0;
+	doc['val'] <= 0;
 	return null;
 	`, runtime.NewObject("val", 0), nil},
 	}

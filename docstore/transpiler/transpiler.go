@@ -103,6 +103,9 @@ type translator struct {
 }
 
 func (tl *translator) reportError(node ast.Node, errmsg string) {
+	if tl.err != nil {
+		return
+	}
 	tl.err = errors.New(errmsg)
 }
 
@@ -175,6 +178,8 @@ func (tl *translator) translateStatement(stmt ast.Statement) {
 	case *ast.ThrowStatement:
 		tl.hasReturnValue = true
 		tl.translateThrowStatement(typedStmt)
+	case *ast.IfStatement:
+		tl.translateIfStatement(typedStmt)
 	default:
 		tl.reportError(stmt, "can not handle "+reflect.TypeOf(stmt).String())
 	}
@@ -311,6 +316,10 @@ var arithmeticFuncs = map[string]string{
 	"-": "Subtract",
 	"*": "Multiply",
 	"/": "Divide",
+	">": "GT",
+	">=": "GE",
+	"<": "GT",
+	"<=": "GE",
 }
 
 func (tl *translator) translateBinaryExpression(operator string, left ast.Expression, right ast.Expression) {
@@ -319,7 +328,6 @@ func (tl *translator) translateBinaryExpression(operator string, left ast.Expres
 		tl.reportError(left, "do not support operator "+operator)
 		return
 	}
-
 	tl.output = append(tl.output, "runtime."...)
 	tl.output = append(tl.output, funcName...)
 	tl.output = append(tl.output, '(')
@@ -327,4 +335,12 @@ func (tl *translator) translateBinaryExpression(operator string, left ast.Expres
 	tl.output = append(tl.output, ", "...)
 	tl.translateExpression(right)
 	tl.output = append(tl.output, ')')
+}
+
+func (tl *translator) translateIfStatement(stmt *ast.IfStatement) {
+	tl.output = append(tl.output, "if (runtime.AsBool("...)
+	tl.translateExpression(stmt.Test)
+	tl.output = append(tl.output, ")) {\n"...)
+	tl.translateStatement(stmt.Consequent)
+	tl.output = append(tl.output, "}\n"...)
 }

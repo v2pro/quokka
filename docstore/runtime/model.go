@@ -45,6 +45,14 @@ type DObject struct {
 	removed map[string]interface{}
 }
 
+func AsBool(val interface{}) bool {
+	return val.(bool)
+}
+
+func AsObj(val interface{}) Object {
+	return val.(Object)
+}
+
 func NewObject(kv ...interface{}) *DObject {
 	data := map[string]interface{}{}
 	for i := 0; i < len(kv); i += 2 {

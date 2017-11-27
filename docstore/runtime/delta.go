@@ -22,10 +22,6 @@ type Object interface {
 	Get(key interface{}) interface{}
 }
 
-func AsObj(val interface{}) Object {
-	return val.(Object)
-}
-
 func (obj *DObject) Set(keyObj interface{}, value interface{}) {
 	key := keyObj.(string)
 	obj.validate(key, value)
