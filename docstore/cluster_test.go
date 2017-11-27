@@ -14,10 +14,10 @@ import (
 
 func Test_write_to_master(t *testing.T) {
 	should := require.New(t)
-	reset("user").Handler("create",
+	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		})
+		}, nil, nil)
 	entityId := "123"
 	partition := kvstore.HashToPartition(entityId)
 	should.Nil(setPartitionServers(partition, &partitionServers{
@@ -44,10 +44,10 @@ func Test_write_to_master(t *testing.T) {
 
 func Test_write_to_slave(t *testing.T) {
 	should := require.New(t)
-	reset("user").Handler("create",
+	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		})
+		}, nil, nil)
 	entityId := "123"
 	partition := kvstore.HashToPartition(entityId)
 	should.Nil(setPartitionServers(partition, &partitionServers{

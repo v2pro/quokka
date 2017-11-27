@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"bytes"
 	"github.com/v2pro/quokka/kvstore"
+	"strings"
 )
 
 var Mux = &http.ServeMux{}
 
 func init() {
 	Mux.HandleFunc("/docstore/exec", exec)
+	Mux.HandleFunc("/docstore/", exec)
 }
 
 func exec(respWriter http.ResponseWriter, req *http.Request) {
@@ -24,15 +26,23 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 		respWriter.Write(replyError(err))
 		return
 	}
-	var reqObj command
-	err = jsoniter.Unmarshal(body, &reqObj)
+	var cmd command
+	err = jsoniter.Unmarshal(body, &cmd)
 	if err != nil {
 		respWriter.Write(replyError(err))
 		return
 	}
+	if !strings.HasSuffix(req.URL.Path, "/exec") {
+		path := strings.Trim(req.URL.Path, "/")
+		segments := strings.Split(path, "/")
+		if len(segments) >= 2 {
+			cmd.CommandType = segments[len(segments) - 1]
+			cmd.EntityType = segments[len(segments) - 2]
+		}
+	}
 	ctx := req.Context()
 	localAddr, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
-	partition := kvstore.HashToPartition(reqObj.EntityId)
+	partition := kvstore.HashToPartition(cmd.EntityId)
 	master, err := getMaster(partition)
 	if err != nil {
 		respWriter.Write(replyError(err))
@@ -46,7 +56,7 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 		respWriter.Write(forwardToMaster(master, body))
 		return
 	}
-	commandResp := commandProcessors[partition].delegatedExec(&reqObj, time.Second)
+	commandResp := commandProcessors[partition].delegatedExec(&cmd, time.Second)
 	respWriter.Write(commandResp)
 	return
 }

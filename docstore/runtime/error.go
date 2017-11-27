@@ -125,8 +125,7 @@ func searchFrame(frames []*goruntime.Frame, targetFile string, funcName string) 
 		if frame.File != targetFile {
 			continue
 		}
-		if len(frame.Function) >= len(suffix) &&
-			frame.Function[len(frame.Function)-len(suffix):] == suffix {
+		if strings.HasSuffix(frame.Function, suffix) {
 			countlog.Trace("event!runtime.found panic frame", "funcName", funcName,
 				"file", frame.File, "line", frame.Line)
 			return frame.Line

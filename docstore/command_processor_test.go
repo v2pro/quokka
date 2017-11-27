@@ -11,10 +11,10 @@ import (
 
 func Test_create_object(t *testing.T) {
 	should := require.New(t)
-	reset("user").Handler("create",
+	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return "hello"
-		})
+		}, nil, nil)
 	entityId := xid.New().String()
 	processor := newCommandProcessor(0)
 	resp := processor.exec(&command{
@@ -29,14 +29,14 @@ func Test_create_object(t *testing.T) {
 
 func Test_get_object(t *testing.T) {
 	should := require.New(t)
-	reset("user").Handler("create",
+	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			runtime.AsObj(doc).Set("hello", "world")
 			return nil
-		}).Handler("get",
+		}, nil, nil).AddCommand("get",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return doc
-		})
+		}, nil, nil)
 
 	entityId := xid.New().String()
 	processor := newCommandProcessor(0)
@@ -55,10 +55,10 @@ func Test_get_object(t *testing.T) {
 	should.Equal("world", jsoniter.Get(resp, "data", "hello").ToString())
 }
 
-func reset(entityType string) *entityCommandHandlers {
+func reset(entityType string) *entityTypeDef {
 	resetMemKVStore()
-	entityTypes = map[string]*entityCommandHandlers{}
-	return Entity(entityType)
+	entityTypes = map[string]*entityTypeDef{}
+	return AddEntity(entityType, nil)
 }
 
 func debugGet(partition uint64, rowKey uint64) []byte {

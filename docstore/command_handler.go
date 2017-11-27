@@ -37,7 +37,7 @@ func (typ *entityTypeDef) Command(commandType string, jsHandler string, thriftID
 }
 
 func (typ *entityTypeDef) AddCommand(commandType string, handler CommandHandler,
-	requestSchema *runtime.Schema, responseSchema *runtime.Schema) {
+	requestSchema *runtime.Schema, responseSchema *runtime.Schema) *entityTypeDef {
 	typ.commandDefsMutex.Lock()
 	defer typ.commandDefsMutex.Unlock()
 	typ.commandDefs[commandType] = &commandDef{
@@ -45,6 +45,7 @@ func (typ *entityTypeDef) AddCommand(commandType string, handler CommandHandler,
 		responseSchema: responseSchema,
 		handler:        handler,
 	}
+	return typ
 }
 
 func (typ *entityTypeDef) getCommandDef(commandType string) *commandDef {
