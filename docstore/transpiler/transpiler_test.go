@@ -15,11 +15,11 @@ func Test_compile(t *testing.T) {
 	}{
 		{"set string", `
 	doc['hello']='world';
-	return nil;
+	return null;
 	`, runtime.NewObject("hello", "world"), nil},
 		{"set object",`
 	doc['hello']={1:2.1};
-	return nil;
+	return null;
 	`, runtime.NewObject("hello", runtime.NewObject("1", 2.1)), nil},
 		{"get string",`
 	doc['hello']='world';
@@ -35,6 +35,12 @@ func Test_compile(t *testing.T) {
 		{"arithmetic",`
 	return (1+1-1*5) / 3;
 	`, runtime.NewObject(), float64(-1)},
+		{"-= and +=",`
+		doc['val'] = 0;
+		doc['val'] += 1;
+		doc['val'] -= 1;
+	return null;
+	`, runtime.NewObject("val", 0), nil},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.title, func(t *testing.T) {

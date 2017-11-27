@@ -220,7 +220,7 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 	case *ast.CallExpression:
 		tl.translateCallExpression(typedExpr)
 	case *ast.BinaryExpression:
-		tl.translateBinaryExpression(typedExpr)
+		tl.translateBinaryExpression(typedExpr.Operator.String(), typedExpr.Left, typedExpr.Right)
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}
@@ -243,6 +243,7 @@ func (tl *translator) translateBracketExpression(expr *ast.BracketExpression) {
 }
 
 func (tl *translator) translateAssignExpression(expr *ast.AssignExpression) {
+	operator := expr.Operator.String()
 	switch leftExpr := expr.Left.(type) {
 	case *ast.BracketExpression:
 		tl.output = append(tl.output, `runtime.AsObj(`...)
@@ -250,7 +251,11 @@ func (tl *translator) translateAssignExpression(expr *ast.AssignExpression) {
 		tl.output = append(tl.output, ").Set("...)
 		tl.translateExpression(leftExpr.Member)
 		tl.output = append(tl.output, ", "...)
-		tl.translateExpression(expr.Right)
+		if operator == "=" {
+			tl.translateExpression(expr.Right)
+		} else {
+			tl.translateBinaryExpression(operator, leftExpr, expr.Right)
+		}
 		tl.output = append(tl.output, ')')
 	case *ast.DotExpression:
 		tl.output = append(tl.output, `runtime.AsObj(`...)
@@ -258,7 +263,11 @@ func (tl *translator) translateAssignExpression(expr *ast.AssignExpression) {
 		tl.output = append(tl.output, `).Set("`...)
 		tl.output = append(tl.output, leftExpr.Identifier.Name...)
 		tl.output = append(tl.output, `", `...)
-		tl.translateExpression(expr.Right)
+		if operator == "=" {
+			tl.translateExpression(expr.Right)
+		} else {
+			tl.translateBinaryExpression(operator, leftExpr, expr.Right)
+		}
 		tl.output = append(tl.output, ')')
 	default:
 		tl.reportError(expr.Left, "can not handle "+reflect.TypeOf(expr.Left).String())
@@ -297,34 +306,25 @@ func (tl *translator) translateCallExpression(expr *ast.CallExpression) {
 	tl.output = append(tl.output, ')')
 }
 
-func (tl *translator) translateBinaryExpression(expr *ast.BinaryExpression) {
-	operator := expr.Operator.String()
-	switch operator {
-	case "+":
-		tl.output = append(tl.output, "runtime.Add("...)
-		tl.translateExpression(expr.Left)
-		tl.output = append(tl.output, ", "...)
-		tl.translateExpression(expr.Right)
-		tl.output = append(tl.output, ')')
-	case "-":
-		tl.output = append(tl.output, "runtime.Subtract("...)
-		tl.translateExpression(expr.Left)
-		tl.output = append(tl.output, ", "...)
-		tl.translateExpression(expr.Right)
-		tl.output = append(tl.output, ')')
-	case "*":
-		tl.output = append(tl.output, "runtime.Multiply("...)
-		tl.translateExpression(expr.Left)
-		tl.output = append(tl.output, ", "...)
-		tl.translateExpression(expr.Right)
-		tl.output = append(tl.output, ')')
-	case "/":
-		tl.output = append(tl.output, "runtime.Divide("...)
-		tl.translateExpression(expr.Left)
-		tl.output = append(tl.output, ", "...)
-		tl.translateExpression(expr.Right)
-		tl.output = append(tl.output, ')')
-	default:
-		tl.reportError(expr, "do not support operator "+operator)
+var arithmeticFuncs = map[string]string{
+	"+": "Add",
+	"-": "Subtract",
+	"*": "Multiply",
+	"/": "Divide",
+}
+
+func (tl *translator) translateBinaryExpression(operator string, left ast.Expression, right ast.Expression) {
+	funcName := arithmeticFuncs[operator]
+	if funcName == "" {
+		tl.reportError(left, "do not support operator "+operator)
+		return
 	}
+
+	tl.output = append(tl.output, "runtime."...)
+	tl.output = append(tl.output, funcName...)
+	tl.output = append(tl.output, '(')
+	tl.translateExpression(left)
+	tl.output = append(tl.output, ", "...)
+	tl.translateExpression(right)
+	tl.output = append(tl.output, ')')
 }
