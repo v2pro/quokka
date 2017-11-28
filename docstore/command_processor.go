@@ -51,14 +51,14 @@ func init() {
 	}
 }
 
-func newCommandProcessor(partition uint64) *commandProcessor {
+func newCommandProcessor(partitionId uint64) *commandProcessor {
 	processor := &commandProcessor{
-		partition:     partition,
+		partition:     partitionId,
 		reqChan:       make(chan *command),
 		entityLookup:  newEntityLookup(),
 		commandLookup: newCommandLookup(),
 	}
-	processor.lookupSyncer = newEventProcessor(partition, processor)
+	processor.lookupSyncer = newEventProcessor(partitionId, processor)
 	return processor
 }
 
@@ -101,7 +101,7 @@ func (processor *commandProcessor) delegatedExec(cmd *command, timeout time.Dura
 }
 
 func (processor *commandProcessor) init(execReq *command) {
-
+	// TODO: load initial state
 }
 
 func (processor *commandProcessor) exec(cmd *command) []byte {
@@ -194,21 +194,21 @@ func (processor *commandProcessor) exec(cmd *command) []byte {
 	// up kv store lookup in separate goroutine
 	processor.lookupSyncer.enqueue(event)
 	if cmd.IsPromoting {
-		go theNode.promotedMaster(partition)
+		go topo.savePromotedMasterInBackground(partition)
 	}
 	return replySuccess(encodedResp)
 }
 
-func (processor *commandProcessor) LoadOffset(partition uint64) (uint64, error) {
-	offset, err := kvstore.GetMonotonic(partition, "offset")
+func (processor *commandProcessor) LoadOffset(partitionId uint64) (uint64, error) {
+	offset, err := kvstore.GetMonotonic(partitionId, "offset")
 	if err != nil {
 		return 0, err
 	}
 	return offset, nil
 }
 
-func (processor *commandProcessor) CommitOffset(partition uint64, offset uint64) error {
-	return kvstore.SetMonotonic(partition, "offset", offset)
+func (processor *commandProcessor) CommitOffset(partitionId uint64, offset uint64) error {
+	return kvstore.SetMonotonic(partitionId, "offset", offset)
 }
 
 func (processor *commandProcessor) Sync(event *Event) error {
@@ -235,6 +235,7 @@ func (processor *commandProcessor) Sync(event *Event) error {
 }
 
 func replySuccess(encodedResp []byte) []byte {
+	// TODO: add handled_by
 	return append(append([]byte(`{"errno":0,"data":`), encodedResp...), '}')
 }
 

@@ -32,14 +32,14 @@ type eventForGetCommandResponse struct {
 	CommandResponse []byte `json:"p"`
 }
 
-func loadEntity(partition uint64, entityType string, entityId string, eventId uint64) (*entity, error) {
-	encodedEvent, err := kvstore.Get(partition, eventId)
+func loadEntity(partitionId uint64, entityType string, entityId string, eventId uint64) (*entity, error) {
+	encodedEvent, err := kvstore.Get(partitionId, eventId)
 	if err != nil {
 		countlog.Trace("event!event_log.event not found",
 			"err", err,
 			"entityCommandHandlers", entityType,
 			"entityId", entityId,
-			"partition", partition,
+			"partition", partitionId,
 			"eventId", eventId)
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func loadEntity(partition uint64, entityType string, entityId string, eventId ui
 	if err = eventJson.Unmarshal(encodedEvent, &event); err != nil {
 		countlog.Trace("event!event_log.failed to unmarshal event",
 			"err", err,
-			"partition", partition,
+			"partition", partitionId,
 			"eventId", eventId,
 			"encodedEvent", encodedEvent)
 		return nil, err
@@ -59,12 +59,12 @@ func loadEntity(partition uint64, entityType string, entityId string, eventId ui
 		deltas = append(deltas, event.Delta)
 		if event.BaseEventId == 0 {
 			countlog.Error("event!event_log.can not find event with state",
-				"partition", partition,
+				"partition", partitionId,
 				"baseEventId", baseEventId,
 				"deltas", deltas)
 			return nil, errors.New("state not found")
 		}
-		encodedEvent, err = kvstore.Get(partition, event.BaseEventId)
+		encodedEvent, err = kvstore.Get(partitionId, event.BaseEventId)
 		if err != nil {
 			return nil, err
 		}
@@ -95,11 +95,11 @@ func loadEntity(partition uint64, entityType string, entityId string, eventId ui
 }
 
 // scanEvents return events in range [from, to)
-func scanEvents(partition uint64, from uint64, to uint64) ([]*Event, error) {
+func scanEvents(partitionId uint64, from uint64, to uint64) ([]*Event, error) {
 	if to <= from {
 		return []*Event{}, nil
 	}
-	iter, err := kvstore.Scan(partition, from)
+	iter, err := kvstore.Scan(partitionId, from)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func scanEvents(partition uint64, from uint64, to uint64) ([]*Event, error) {
 				return nil, err
 			}
 			event.EventId = eventId
-			event.Partition = partition
+			event.Partition = partitionId
 			events = append(events, &event)
 		}
 	}
@@ -136,8 +136,8 @@ func scanEvents(partition uint64, from uint64, to uint64) ([]*Event, error) {
 	return events, nil
 }
 
-func getCommandResponse(partition uint64, eventId uint64) ([]byte, error) {
-	encodedEvent, err := kvstore.Get(partition, eventId)
+func getCommandResponse(partitionId uint64, eventId uint64) ([]byte, error) {
+	encodedEvent, err := kvstore.Get(partitionId, eventId)
 	if err != nil {
 		return nil, err
 	}

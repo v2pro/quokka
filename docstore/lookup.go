@@ -23,24 +23,24 @@ func newEntityLookup() *entityLookup {
 	}
 }
 
-func (lookup *entityLookup) getEntity(partition uint64, entityType string, entityId string) (*entity, error) {
+func (lookup *entityLookup) getEntity(partitionId uint64, entityType string, entityId string) (*entity, error) {
 	cachedVal := lookup.memLookup.getCacheValue(entityId)
 	if cachedVal != nil {
 		return cachedVal.(*entity), nil
 	}
-	eventId, err := lookup.kvstoreLookup.getEventId(partition, entityId, lookup.memLookup.cache2StartVersion)
+	eventId, err := lookup.kvstoreLookup.getEventId(partitionId, entityId, lookup.memLookup.cache2StartVersion)
 	if err != nil {
 		return nil, err
 	}
-	return loadEntity(partition, entityType, entityId, eventId)
+	return loadEntity(partitionId, entityType, entityId, eventId)
 }
 
 func (lookup *entityLookup) cacheEntity(entityId string, value *entity, version uint64) {
 	lookup.memLookup.setCacheValue(entityId, value, version)
 }
 
-func (lookup *entityLookup) setEventId(partition uint64, entityId string, eventId uint64) error {
-	return lookup.kvstoreLookup.setEventId(partition, entityId, eventId)
+func (lookup *entityLookup) setEventId(partitionId uint64, entityId string, eventId uint64) error {
+	return lookup.kvstoreLookup.setEventId(partitionId, entityId, eventId)
 }
 
 type commandLookup struct {
@@ -61,24 +61,24 @@ func newCommandLookup() *commandLookup {
 	}
 }
 
-func (lookup *commandLookup) getCommand(partition uint64, commandId string) ([]byte, error) {
+func (lookup *commandLookup) getCommand(partitionId uint64, commandId string) ([]byte, error) {
 	cachedVal := lookup.memLookup.getCacheValue(commandId)
 	if cachedVal != nil {
 		return cachedVal.([]byte), nil
 	}
-	eventId, err := lookup.kvstoreLookup.getEventId(partition, commandId, lookup.memLookup.cache2StartVersion)
+	eventId, err := lookup.kvstoreLookup.getEventId(partitionId, commandId, lookup.memLookup.cache2StartVersion)
 	if err != nil {
 		return nil, err
 	}
-	return getCommandResponse(partition, eventId)
+	return getCommandResponse(partitionId, eventId)
 }
 
 func (lookup *commandLookup) cacheCommand(commandId string, value []byte, version uint64) {
 	lookup.memLookup.setCacheValue(commandId, value, version)
 }
 
-func (lookup *commandLookup) setEventId(partition uint64, commandId string, eventId uint64) error {
-	return lookup.kvstoreLookup.setEventId(partition, commandId, eventId)
+func (lookup *commandLookup) setEventId(partitionId uint64, commandId string, eventId uint64) error {
+	return lookup.kvstoreLookup.setEventId(partitionId, commandId, eventId)
 }
 
 type memLookup struct {
@@ -121,21 +121,21 @@ type kvstoreLookup struct {
 	prefix string
 }
 
-func (lookup *kvstoreLookup) getEventId(partition uint64, key string, minVersion uint64) (uint64, error) {
-	offset, err := kvstore.GetMonotonic(partition, "offset")
+func (lookup *kvstoreLookup) getEventId(partitionId uint64, key string, minVersion uint64) (uint64, error) {
+	offset, err := kvstore.GetMonotonic(partitionId, "offset")
 	if err != nil {
 		return 0, err
 	}
 	if offset < minVersion {
 		return 0, errors.New("lookup is too old")
 	}
-	value, err := kvstore.GetMonotonic(partition, lookup.prefix + key)
+	value, err := kvstore.GetMonotonic(partitionId, lookup.prefix + key)
 	if err != nil {
 		return 0, err
 	}
 	return value, nil
 }
 
-func (lookup *kvstoreLookup) setEventId(partition uint64, key string, eventId uint64) error {
-	return kvstore.SetMonotonic(partition, lookup.prefix + key, eventId)
+func (lookup *kvstoreLookup) setEventId(partitionId uint64, key string, eventId uint64) error {
+	return kvstore.SetMonotonic(partitionId, lookup.prefix + key, eventId)
 }

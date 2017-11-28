@@ -11,7 +11,7 @@ import (
 	"bytes"
 )
 
-func Test_entity_command_url(t *testing.T) {
+func Test_happy_path(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil

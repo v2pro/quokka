@@ -62,8 +62,8 @@ func reset(entityType string) *entityTypeDef {
 	return AddEntity(entityType, nil)
 }
 
-func debugGet(partition uint64, rowKey uint64) []byte {
-	row, err := kvstore.Get(partition, rowKey)
+func debugGet(partitionId uint64, rowKey uint64) []byte {
+	row, err := kvstore.Get(partitionId, rowKey)
 	if err != nil {
 		panic(err)
 	}

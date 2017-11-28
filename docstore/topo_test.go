@@ -2,46 +2,30 @@ package docstore
 
 import (
 	"testing"
-	"net/http"
-	"time"
-	"strings"
 	"github.com/stretchr/testify/require"
-	"io/ioutil"
-	"github.com/json-iterator/go"
+	"github.com/v2pro/quokka/kvstore/memkv"
 )
 
-func Test_write_to_master(t *testing.T) {
-	reset("user").AddCommand("create",
-		func(doc interface{}, request interface{}) (resp interface{}) {
-			return nil
-		}, nil, nil)
-	StartNode("127.0.0.1:2515")
-	post(t, "http://127.0.0.1:2515/docstore/exec",
-		"EntityType", "user",
-		"CommandType", "create",
-		"EntityId", "123")
+func Test_rebalance_init(t *testing.T) {
+	memkv.ResetKVStore()
+	should := require.New(t)
+	thisNodeAddr = "127.0.0.1:2515"
+	topo.rebalance(map[string]*nodeStatus{
+		"127.0.0.1:2515": {Addr:"127.0.0.1:2515"}})
+	should.Equal("127.0.0.1:2515", topo.get(0).master)
+	should.True(topo.get(0).isPromoting)
 }
 
-func Test_write_to_slave(t *testing.T) {
+func Test_rebalance_new_nodes(t *testing.T) {
+	memkv.ResetKVStore()
 	should := require.New(t)
-	reset("user").AddCommand("create",
-		func(doc interface{}, request interface{}) (resp interface{}) {
-			return nil
-		}, nil, nil)
-	StartNode("127.0.0.1:2515")
-	StartNode("127.0.0.1:2516")
-	time.Sleep(time.Second)
-	resp, err := http.Post("http://127.0.0.1:2516/docstore/exec", "application/json",
-		strings.NewReader(`
-{
-	"EntityType": "user",
-	"CommandType": "create",
-	"EntityId": "123"
-}
-		`))
-	should.Nil(err)
-	body, err := ioutil.ReadAll(resp.Body)
-	should.Nil(err)
-	should.Equal("", jsoniter.Get(body, "errmsg").ToString())
-	should.Equal(2515, jsoniter.Get(body, "hint_master", "Port").ToInt())
+	thisNodeAddr = "127.0.0.1:2515"
+	cluster := map[string]*nodeStatus{
+		"127.0.0.1:2515": {Addr: "127.0.0.1:2515"}}
+	topo.rebalance(cluster)
+	should.Equal("127.0.0.1:2515", topo.get(0).master)
+	should.True(topo.get(0).isPromoting)
+	cluster["127.0.0.1:2516"] = &nodeStatus{Addr:"127.0.0.1:2515"}
+	topo.rebalance(cluster)
+	should.Equal(997 / 2, cluster[thisNodeAddr].MasterPartitionsCount)
 }
