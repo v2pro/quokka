@@ -21,6 +21,7 @@ import (
 
 var thisNodeAddr string
 var thisNodeStarted bool
+var thisNodeHttpServer *http.Server
 var thisNodeExecutor *concurrent.UnboundedExecutor
 
 func StartNode(ctx context.Context, addr string) {
@@ -30,7 +31,10 @@ func StartNode(ctx context.Context, addr string) {
 	mux.HandleFunc("/docstore/exec", exec)
 	mux.HandleFunc("/docstore/", exec)
 	// will promote servers to master if needed
-	go http.ListenAndServe(addr, mux)
+	thisNodeHttpServer = &http.Server{Addr: addr, Handler: mux}
+	thisNodeExecutor.Go(func(ctx context.Context) {
+		thisNodeHttpServer.ListenAndServe()
+	})
 	if !isAlive(addr) {
 		countlog.Error("event!node.failed to listen http", "addr", addr)
 		return
@@ -42,9 +46,16 @@ func StartNode(ctx context.Context, addr string) {
 	}
 }
 
-func StopNode() {
+func StopNode(ctx context.Context) {
 	countlog.Info("event!node.stopping")
-	thisNodeExecutor.StopAndWait()
+	if err := thisNodeHttpServer.Shutdown(ctx); err != nil {
+		countlog.Error("event!node.failed to shutdown http server", "err", err)
+	}
+	thisNodeExecutor.StopAndWait(ctx)
+	commandProcessors = make([]map[string]*commandProcessor, kvstore.PartitionsCount)
+	topo = make(topology, kvstore.PartitionsCount)
+	thisNodeStarted = false
+	thisNodeAddr = ""
 	countlog.Info("event!node.stopped")
 	thisNodeExecutor = nil
 }

@@ -16,11 +16,13 @@ import (
 
 func TestMain(m *testing.M) {
 	exitCode := m.Run()
-	StopNode()
+	if thisNodeExecutor != nil {
+		StopNode(context.TODO())
+	}
 	os.Exit(exitCode)
 }
 
-func Test_cluster_first_node(t *testing.T) {
+func Test_first_event(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
@@ -30,7 +32,7 @@ func Test_cluster_first_node(t *testing.T) {
 	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
 }
 
-func Test_cluster_not_first_event(t *testing.T) {
+func Test_duplicated_entity(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
@@ -38,6 +40,10 @@ func Test_cluster_not_first_event(t *testing.T) {
 	StartNode(context.TODO(),"127.0.0.1:2515")
 	time.Sleep(time.Second)
 	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
+	StopNode(context.TODO())
+	StartNode(context.TODO(),"127.0.0.1:2515")
+	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/create", ErrDuplicatedEntity,
+		"EntityId", "123")
 }
 
 func Test_cluster_commit_failure(t *testing.T) {

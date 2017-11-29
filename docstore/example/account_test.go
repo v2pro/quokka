@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"github.com/json-iterator/go"
 	"github.com/v2pro/quokka/kvstore/memkv"
+	"context"
 )
 
 func Test_account(t *testing.T) {
@@ -54,7 +55,7 @@ func Test_account(t *testing.T) {
 		1: i64 remaining_amount
 	}
 	`)
-	go http.ListenAndServe("127.0.0.1:2515", docstore.Mux)
+	docstore.StartNode(context.TODO(), "127.0.0.1:2515")
 	time.Sleep(time.Second)
 	post(t, "http://127.0.0.1:2515/docstore/Account/create", `
 {

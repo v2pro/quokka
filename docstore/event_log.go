@@ -7,6 +7,7 @@ import (
 	"github.com/v2pro/plz/countlog"
 	"errors"
 	"context"
+	"encoding/json"
 )
 
 var eventJson = jsoniter.Config{
@@ -23,14 +24,14 @@ type entity struct {
 }
 
 type eventForLoadEntity struct {
-	BaseEventId uint64 `json:"b"`
-	Version     uint64 `json:"v"`
-	State       []byte `json:"s"`
-	Delta       []byte `json:"d"`
+	BaseEventId uint64          `json:"b"`
+	Version     uint64          `json:"v"`
+	State       json.RawMessage `json:"s"`
+	Delta       json.RawMessage `json:"d"`
 }
 
 type eventForGetCommandResponse struct {
-	CommandResponse []byte `json:"p"`
+	CommandResponse json.RawMessage `json:"p"`
 }
 
 func loadEntity(ctx context.Context, partitionId uint64, entityType string, entityId string, eventId uint64) (*entity, error) {

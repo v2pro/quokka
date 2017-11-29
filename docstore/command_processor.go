@@ -13,6 +13,7 @@ import (
 
 const ErrUnknown = 1000
 const ErrEventLogConflict = 1001 // the master is no longer in charge, should find out who is the master
+const ErrDuplicatedEntity = 1002 // create entity with same entity id but with different command id
 var commandProcessors = make([]map[string]*commandProcessor, kvstore.PartitionsCount)
 
 type commandProcessor struct {
@@ -188,6 +189,8 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 		if err != nil {
 			return replyError(err)
 		}
+	} else {
+		req = json.RawMessage("{}")
 	}
 	store := getEntityType(entityType)
 	if store == nil {
@@ -202,7 +205,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	if "create" == commandType {
 		_, err := processor.entityLookup.getEntity(ctx, partition, entityType, entityId)
 		if err == nil {
-			return replyError(errors.New("entity with same id found"))
+			return replyError(withErrorNumber(errors.New("entity with same id found"), ErrDuplicatedEntity))
 		}
 		ent = &entity{
 			eventId: 0,
@@ -259,6 +262,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	countlog.Trace("event!docstore.stored event",
 		"partitionId", processor.partitionId,
 		"eventId", event.EventId,
+		"entityId", event.EntityId,
 		"encodedEvent", encodedEvent)
 	processor.lastEventId = event.EventId
 	// update in memory lookup

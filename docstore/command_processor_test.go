@@ -26,7 +26,7 @@ func Test_create_object(t *testing.T) {
 	})
 	should.Equal("", jsoniter.Get(resp, "errmsg").ToString())
 	should.Equal("hello", jsoniter.Get(resp, "data").ToString())
-	should.True(jsoniter.Get(debugGet(0, "user", 1), "s").ToBool())
+	should.Equal("{}", jsoniter.Get(debugGet(0, "user", 1), "s").ToString())
 }
 
 func Test_get_object(t *testing.T) {
