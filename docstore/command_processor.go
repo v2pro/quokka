@@ -13,6 +13,7 @@ import (
 
 const ErrUnknown = 10000
 const ErrEventLogConflict = 10001 // the master is no longer in charge, should find out who is the master
+const ErrForwardedTooManyTimes = 10002 // the master can not be found
 
 // error number within range [LoggedErrStart, LoggedErrEnd) is committed in event_log as fact
 const LoggedErrStart = 20000
@@ -37,6 +38,7 @@ type command struct {
 	CommandId      string
 	CommandRequest json.RawMessage
 	IsPromoting    bool // update topo when command executed successfully
+	ForwardedTimes int
 	respChan       chan []byte
 }
 

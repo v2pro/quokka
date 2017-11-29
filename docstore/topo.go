@@ -63,6 +63,7 @@ func (topo topology) clearMaster(partitionId uint64) {
 	countlog.Info("event!topo.clear master",
 		"partitionId", partitionId,
 		"oldMaster", oldMaster)
+	triggerTopoChanged()
 }
 
 func (topo topology) refresh(ctx context.Context, partitionId uint64) (string, error) {

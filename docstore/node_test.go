@@ -27,8 +27,8 @@ func Test_first_event(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	StartNode(context.TODO(), "127.0.0.1:2515")
-	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
+	StartNode(context.TODO(), "127.0.0.1:9879")
+	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/create", "EntityId", "123")
 }
 
 func Test_duplicated_entity(t *testing.T) {
@@ -38,11 +38,11 @@ func Test_duplicated_entity(t *testing.T) {
 			return nil
 		}, nil, nil)
 	ctx := context.TODO()
-	StartNode(ctx, "127.0.0.1:2515")
-	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
+	StartNode(ctx, "127.0.0.1:9879")
+	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/create", "EntityId", "123")
 	StopNode(ctx)
-	StartNode(ctx, "127.0.0.1:2515")
-	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/create", ErrDuplicatedEntity,
+	StartNode(ctx, "127.0.0.1:9879")
+	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/create", ErrDuplicatedEntity,
 		"EntityId", "123")
 	event2 := debugGet(kvstore.HashToPartition("123"), "user", 2)
 	should.Equal(1, jsoniter.Get(event2, "b").ToInt())
@@ -57,12 +57,28 @@ func Test_append_more_event_log_after_restart(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	StartNode(context.TODO(), "127.0.0.1:2515")
-	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
+	StartNode(context.TODO(), "127.0.0.1:9879")
+	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/create", "EntityId", "123")
 	StopNode(context.TODO())
-	StartNode(context.TODO(), "127.0.0.1:2515")
-	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/noop", "EntityId", "123")
+	StartNode(context.TODO(), "127.0.0.1:9879")
+	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/noop", "EntityId", "123")
 	should.Equal(1, jsoniter.Get(debugGet(kvstore.HashToPartition("123"), "user", 2), "b").ToInt())
+}
+
+func Test_command_before_create(t *testing.T) {
+	should := require.New(t)
+	reset("user").AddCommand("create",
+		func(doc interface{}, request interface{}) (resp interface{}) {
+			return nil
+		}, nil, nil).AddCommand("noop",
+		func(doc interface{}, request interface{}) (resp interface{}) {
+			return nil
+		}, nil, nil)
+	StartNode(context.TODO(), "127.0.0.1:9879")
+	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrEntityNotFound,
+		"EntityId", "123")
+	event1 := debugGet(kvstore.HashToPartition("123"), "user", 1)
+	should.Equal(ErrEntityNotFound, jsoniter.Get(event1, "p", "errno").ToInt())
 }
 
 func Test_key_conflict_lost_master(t *testing.T) {
@@ -73,23 +89,25 @@ func Test_key_conflict_lost_master(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	StartNode(context.TODO(), "127.0.0.1:2515")
-	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/noop", ErrEntityNotFound,
+	StartNode(context.TODO(), "127.0.0.1:9879")
+	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrEntityNotFound,
 		"EntityId", "123")
 	event, _ := eventJson.Marshal(&Event{
 		EntityId:        "123",
-		BaseEventId:     0,
-		Version:         1,
+		BaseEventId:     1,
+		Version:         2,
 		CommandId:       "",
 		CommandType:     "create",
 		CommandRequest:  []byte("{}"),
 		CommandResponse: []byte("{}"),
-		State:           []byte("{}"),
+		State:           []byte("null"),
 		Delta:           []byte("{}"),
 		CommittedAt:     time.Now().UnixNano(),
 	})
-	kvstore.Append(context.TODO(), kvstore.HashToPartition("123"), "user", 1, event)
-	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/noop", ErrEventLogConflict,
+	kvstore.Append(context.TODO(), kvstore.HashToPartition("123"), "user", 2, event)
+	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrEventLogConflict,
+		"EntityId", "123")
+	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/noop",
 		"EntityId", "123")
 }
 

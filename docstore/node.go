@@ -14,6 +14,7 @@ import (
 	"github.com/v2pro/plz/concurrent"
 	"context"
 	"sync"
+	"errors"
 )
 
 // node.go is the process running endpoint
@@ -54,6 +55,7 @@ func StartNode(ctx context.Context, addr string) {
 		countlog.Error("event!node.failed to publish", "addr", addr)
 		return
 	}
+	countlog.Info("event!node.started", "addr", addr)
 }
 
 func StopNode(ctx context.Context) {
@@ -108,9 +110,9 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 	}
 	partitionId := kvstore.HashToPartition(cmd.EntityId)
 	var commandResp []byte
-	target, isLocal := chooseCommandTarget(partitionId, &cmd, req)
+	master, isLocal := chooseCommandTarget(partitionId, &cmd, req)
 	countlog.Trace("event!node.choose command target",
-		"target", target,
+		"target", master,
 		"isLocal", isLocal,
 		"cmd", &cmd)
 	if isLocal {
@@ -121,10 +123,41 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 		}
 		commandResp = commandProcessor.delegatedExec(&cmd, time.Second)
 	} else {
-		commandResp = forwardCommand(target, &cmd)
+		commandResp = forwardCommand(master, &cmd)
 	}
-	// TODO: clear master if master hint is different from our setting
+	var resp respWithErrno
+	jsoniter.Unmarshal(commandResp, &resp)
+	resp.VerifyMaster(partitionId, master)
 	respWriter.Write(commandResp)
+}
+
+type respWithErrno struct {
+	Errno     int    `json:"errno"`
+	Committed bool   `json:"committed"`
+	HandledBy string `json:"handled_by"`
+}
+
+func (resp *respWithErrno) VerifyMaster(partitionId uint64, master string) {
+	if master == "" {
+		return
+	}
+	if resp.Errno == ErrEventLogConflict {
+		countlog.Warn("event!node.find master failed to commit event log",
+			"oldMaster", master,
+			"partitionId", partitionId)
+		topo.clearMaster(partitionId)
+		return
+	}
+	isCommitted := resp.Errno == 0 || resp.Committed
+	if isCommitted && resp.HandledBy != master {
+		countlog.Warn("event!node.find the actual master is different",
+			"oldMaster", master,
+			"actualMaster", resp.HandledBy,
+			"partitionId", partitionId)
+		topo.clearMaster(partitionId)
+		return
+	}
+	return
 }
 
 func getOrCreateCommandProcessor(ctx context.Context, partitionId uint64, entityType string) (*commandProcessor, error) {
@@ -174,10 +207,14 @@ func chooseCommandTarget(partitionId uint64, cmd *command, req *http.Request) (s
 	if master != localAddr.String() {
 		return master, false
 	}
-	return "", true
+	return master, true
 }
 
 func forwardCommand(target string, cmd *command) []byte {
+	if cmd.ForwardedTimes >= 3 {
+		return replyError(withErrorNumber(errors.New("forwarded too many times"), ErrForwardedTooManyTimes))
+	}
+	cmd.ForwardedTimes += 1
 	req, err := runtime.Json.Marshal(cmd)
 	if err != nil {
 		return replyError(err)
