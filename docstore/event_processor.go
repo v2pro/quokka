@@ -23,7 +23,7 @@ type eventProcessor struct {
 type eventInbox chan *Event
 
 type Event struct {
-	Partition       uint64          `json:"-"`
+	PartitionId     uint64          `json:"-"`
 	EntityType      string          `json:"-"`
 	EventId         uint64          `json:"-"`
 	EntityId        string          `json:"e"`
@@ -58,7 +58,7 @@ func (subscriber *eventSubscriber) start() {
 }
 
 func (subscriber *eventSubscriber) enqueue(event *Event) {
-	subscriber.processors[event.Partition].enqueue(event)
+	subscriber.processors[event.PartitionId].enqueue(event)
 }
 
 func AddEventHandler(handler EventHandler) {

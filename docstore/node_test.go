@@ -37,13 +37,31 @@ func Test_duplicated_entity(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	StartNode(context.TODO(),"127.0.0.1:2515")
+	StartNode(context.TODO(), "127.0.0.1:2515")
 	time.Sleep(time.Second)
 	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
 	StopNode(context.TODO())
-	StartNode(context.TODO(),"127.0.0.1:2515")
+	StartNode(context.TODO(), "127.0.0.1:2515")
 	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/create", ErrDuplicatedEntity,
 		"EntityId", "123")
+}
+
+func Test_append_more_event_log_after_restart(t *testing.T) {
+	should := require.New(t)
+	reset("user").AddCommand("create",
+		func(doc interface{}, request interface{}) (resp interface{}) {
+			return nil
+		}, nil, nil).AddCommand("noop",
+		func(doc interface{}, request interface{}) (resp interface{}) {
+			return nil
+		}, nil, nil)
+	StartNode(context.TODO(), "127.0.0.1:2515")
+	time.Sleep(time.Second)
+	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
+	StopNode(context.TODO())
+	StartNode(context.TODO(), "127.0.0.1:2515")
+	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/noop", "EntityId", "123")
+	should.Equal(1, jsoniter.Get(debugGet(kvstore.HashToPartition("123"), "user", 2), "b").ToInt())
 }
 
 func Test_cluster_commit_failure(t *testing.T) {
@@ -51,7 +69,7 @@ func Test_cluster_commit_failure(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	StartNode(context.TODO(),"127.0.0.1:2515")
+	StartNode(context.TODO(), "127.0.0.1:2515")
 	time.Sleep(time.Second)
 	kvstore.Append(context.TODO(), kvstore.HashToPartition("123"), "user", 1, []byte{})
 	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/create", ErrEventLogConflict,

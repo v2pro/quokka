@@ -13,11 +13,21 @@ import (
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/v2pro/plz/concurrent"
 	"context"
+	"sync"
 )
 
 // node.go is the process running endpoint
 // it will forward to other nodes, or itself (command_processor)
 // node.go will delegate the state to topo.go/cluster.go
+
+var commandProcessors = make([]map[string]*commandProcessor, kvstore.PartitionsCount)
+var commandProcessorsMutexs = make([]*sync.Mutex, kvstore.PartitionsCount)
+
+func init() {
+	for i := 0; i < kvstore.PartitionsCount; i++ {
+		commandProcessorsMutexs[i] = &sync.Mutex{}
+	}
+}
 
 var thisNodeAddr string
 var thisNodeStarted bool
@@ -104,7 +114,11 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 		"isLocal", isLocal,
 		"cmd", &cmd)
 	if isLocal {
-		commandProcessor := getOrCreateCommandProcessor(req.Context(), partitionId, cmd.EntityType)
+		commandProcessor, err := getOrCreateCommandProcessor(req.Context(), partitionId, cmd.EntityType)
+		if err != nil {
+			respWriter.Write(replyError(err))
+			return
+		}
 		commandResp = commandProcessor.delegatedExec(&cmd, time.Second)
 	} else {
 		commandResp = forwardCommand(target, &cmd)
@@ -113,18 +127,34 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 	respWriter.Write(commandResp)
 }
 
-func getOrCreateCommandProcessor(ctx context.Context, partitionId uint64, entityType string) *commandProcessor {
+func getOrCreateCommandProcessor(ctx context.Context, partitionId uint64, entityType string) (*commandProcessor, error) {
+	commandProcessorsMutexs[partitionId].Lock()
+	defer commandProcessorsMutexs[partitionId].Unlock()
+	if commandProcessors[partitionId] == nil {
+		commandProcessors[partitionId] = map[string]*commandProcessor{}
+	}
 	commandProcessor := commandProcessors[partitionId][entityType]
 	if commandProcessor != nil {
-		return commandProcessor
+		return commandProcessor, nil
 	}
 	processor := newCommandProcessor(partitionId, entityType)
-	processor.init(ctx)
+	err := processor.init(ctx)
+	if err != nil {
+		countlog.Error("event!node.failed to init command processor",
+			"partitionId", partitionId,
+			"entityType", entityType,
+			"err", err)
+		return nil, err
+	}
 	thisNodeExecutor.Go(func(ctx context.Context) {
 		processor.executeInBackground(ctx)
 	})
 	thisNodeExecutor.Go(processor.lookupSyncer.syncInBackground)
-	return processor
+	countlog.Info("event!node.created new command processor",
+		"partitionId", partitionId,
+		"entityType", entityType)
+	commandProcessors[partitionId][entityType] = processor
+	return processor, nil
 }
 
 func chooseCommandTarget(partitionId uint64, cmd *command, req *http.Request) (string, bool) {

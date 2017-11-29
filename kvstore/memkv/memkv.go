@@ -22,6 +22,7 @@ func ResetKVStore() {
 	memMetadata = []*kvstore.MetadataRow{}
 	kvstore.Get = memGet
 	kvstore.Append = memAppend
+	kvstore.Scan = memScan
 	kvstore.GetMetadata = memGetMetadata
 	kvstore.SetMetadata = memSetMetadata
 	kvstore.ScanMetadata = memScanMetadata
@@ -57,6 +58,31 @@ func memAppend(ctx context.Context, partition uint64, namespace string, rowKey u
 	rows = append(rows, rowValue)
 	memPartitions[partition] = rows
 	return nil
+}
+
+func memScan(ctx context.Context, partition uint64, namespace string, fromKey uint64) (kvstore.RowIterator, error) {
+	if partition < 0 || partition >= uint64(len(memPartitions)) {
+		return nil, errors.New("partition not found")
+	}
+	rows := memPartitions[partition]
+	currentOffset := fromKey
+	return func() ([]kvstore.Row, error) {
+		if currentOffset >= uint64(len(rows)) {
+			return nil, nil
+		}
+		nextOffset := currentOffset + 100
+		if nextOffset > uint64(len(rows)) {
+			nextOffset = uint64(len(rows))
+		}
+		batchValues := rows[currentOffset:nextOffset]
+		batchRows := make([]kvstore.Row, len(batchValues))
+		for i := 0; i < len(batchValues); i++ {
+			batchRows[i].Key = currentOffset + uint64(i)
+			batchRows[i].Value = batchValues[i]
+		}
+		currentOffset = nextOffset
+		return batchRows, nil
+	}, nil
 }
 
 func memGetMonotonic(ctx context.Context, partition uint64, namespace string, key string) (uint64, error) {

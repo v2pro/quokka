@@ -38,7 +38,7 @@ func init() {
 }
 
 type DObject struct {
-	Schema  *Schema
+	Schema  *Schema `json:"-"`
 	data    map[string]interface{}
 	updated map[string]interface{}
 	patched map[string]interface{}

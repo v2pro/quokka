@@ -125,7 +125,7 @@ func scanEvents(ctx context.Context, partitionId uint64, entityType string, from
 				return nil, err
 			}
 			event.EventId = eventId
-			event.Partition = partitionId
+			event.PartitionId = partitionId
 			events = append(events, &event)
 		}
 	}

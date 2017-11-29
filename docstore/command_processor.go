@@ -14,7 +14,6 @@ import (
 const ErrUnknown = 1000
 const ErrEventLogConflict = 1001 // the master is no longer in charge, should find out who is the master
 const ErrDuplicatedEntity = 1002 // create entity with same entity id but with different command id
-var commandProcessors = make([]map[string]*commandProcessor, kvstore.PartitionsCount)
 
 type commandProcessor struct {
 	partitionId   uint64
@@ -92,6 +91,9 @@ func (processor *commandProcessor) init(ctx context.Context) error {
 					"encodedEvent", row.Value)
 				return err
 			}
+			event.PartitionId = processor.partitionId
+			event.EntityType = processor.entityType
+			event.EventId = row.Key
 			processor.commandLookup.cacheCommand(event.CommandId, event.CommandResponse, event.EventId)
 			err := processor.replayEvent(ctx, &event)
 			if err != nil {
@@ -229,7 +231,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 		return replyError(err)
 	}
 	event := &Event{
-		Partition:       partition,
+		PartitionId:     partition,
 		EntityType:      entityType,
 		EventId:         processor.lastEventId + 1,
 		BaseEventId:     ent.eventId,
@@ -295,20 +297,20 @@ func (processor *commandProcessor) Sync(ctx context.Context, event *Event) error
 	thisNodeExecutor.Go(func(ctx context.Context) {
 		forwardEventInBackground(ctx, event)
 	})
-	err := processor.entityLookup.setEventId(ctx, event.Partition, event.EntityType, event.EntityId, event.EventId)
+	err := processor.entityLookup.setEventId(ctx, event.PartitionId, event.EntityType, event.EntityId, event.EventId)
 	if err != nil {
 		countlog.Error("event!core_event_handler.failed to update entity lookup",
 			"err", err,
-			"partitionId", event.Partition,
+			"partitionId", event.PartitionId,
 			"entityId", event.EntityId,
 			"eventId", event.EventId)
 		return err
 	}
-	err = processor.entityLookup.setEventId(ctx, event.Partition, event.EntityType, event.CommandId, event.EventId)
+	err = processor.entityLookup.setEventId(ctx, event.PartitionId, event.EntityType, event.CommandId, event.EventId)
 	if err != nil {
 		countlog.Error("event!core_event_handler.failed to update command lookup",
 			"err", err,
-			"partitionId", event.Partition,
+			"partitionId", event.PartitionId,
 			"entityId", event.EntityId,
 			"eventId", event.EventId)
 		return err
