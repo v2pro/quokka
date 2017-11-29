@@ -8,6 +8,7 @@ import (
 	"errors"
 	"context"
 	"encoding/json"
+	"bytes"
 )
 
 var eventJson = jsoniter.Config{
@@ -57,14 +58,18 @@ func loadEntity(ctx context.Context, partitionId uint64, entityType string, enti
 	version := event.Version
 	baseEventId := eventId
 	var deltas [][]byte
-	for event.State == nil {
+	for bytes.Equal(event.State, []byte("null")) {
 		deltas = append(deltas, event.Delta)
 		if event.BaseEventId == 0 {
 			countlog.Error("event!event_log.can not find event with state",
 				"partitionId", partitionId,
 				"baseEventId", baseEventId,
 				"deltas", deltas)
-			return nil, errors.New("state not found")
+			return &entity{
+				eventId: baseEventId,
+				version: version,
+				doc:     nil,
+			}, nil
 		}
 		encodedEvent, err = kvstore.Get(ctx, partitionId, entityType, event.BaseEventId)
 		if err != nil {

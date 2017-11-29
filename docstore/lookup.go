@@ -6,6 +6,8 @@ import (
 	"context"
 )
 
+var entityNotFoundError = withErrorNumber(errors.New("entity not found"), ErrEntityNotFound)
+
 type entityLookup struct {
 	memLookup     *memLookup
 	kvstoreLookup *kvstoreLookup
@@ -32,6 +34,9 @@ func (lookup *entityLookup) getEntity(ctx context.Context, partitionId uint64, e
 	eventId, err := lookup.kvstoreLookup.getEventId(ctx, partitionId, entityType, entityId, lookup.memLookup.cache2StartVersion)
 	if err != nil {
 		return nil, err
+	}
+	if eventId == 0 {
+		return nil, entityNotFoundError
 	}
 	return loadEntity(ctx, partitionId, entityType, entityId, eventId)
 }

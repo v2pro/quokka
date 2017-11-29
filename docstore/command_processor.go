@@ -11,9 +11,14 @@ import (
 	"context"
 )
 
-const ErrUnknown = 1000
-const ErrEventLogConflict = 1001 // the master is no longer in charge, should find out who is the master
-const ErrDuplicatedEntity = 1002 // create entity with same entity id but with different command id
+const ErrUnknown = 10000
+const ErrEventLogConflict = 10001 // the master is no longer in charge, should find out who is the master
+
+// error number within range [LoggedErrStart, LoggedErrEnd) is committed in event_log as fact
+const LoggedErrStart = 20000
+const ErrDuplicatedEntity = LoggedErrStart // create entity with same entity id but with different command id
+const ErrEntityNotFound = 20001 // entity not created yet
+const LoggedErrEnd = 30000
 
 type commandProcessor struct {
 	partitionId   uint64
@@ -105,28 +110,14 @@ func (processor *commandProcessor) init(ctx context.Context) error {
 
 func (processor *commandProcessor) replayEvent(ctx context.Context, event *Event) error {
 	var err error
-	if event.State != nil {
-		var doc = runtime.NewObject()
-		err = runtime.Json.Unmarshal(event.State, doc)
-		if err != nil {
-			countlog.Error("event!command_processor.failed to unmarshal state",
-				"err", err,
-				"state", event.State)
-			return err
-		}
-		processor.entityLookup.cacheEntity(event.EntityId, &entity{
-			eventId: event.EventId,
-			version: event.Version,
-			doc:     doc,
-		}, event.EventId)
-		return nil
-	}
 	entity, _ := processor.entityLookup.memLookup.getCacheValue(event.EntityId).(*entity)
 	if entity == nil {
-		entity, err = loadEntity(ctx, processor.partitionId, processor.entityType, event.EntityId, event.BaseEventId)
+		entity, err = loadEntity(ctx, processor.partitionId, processor.entityType, event.EntityId, event.EventId)
 		if err != nil {
 			return err
 		}
+		processor.entityLookup.cacheEntity(event.EntityId, entity, event.EventId)
+		return nil
 	}
 	err = runtime.DeltaJson.Unmarshal(event.Delta, entity.doc)
 	if err != nil {
@@ -135,6 +126,8 @@ func (processor *commandProcessor) replayEvent(ctx context.Context, event *Event
 			"state", event.State)
 		return err
 	}
+	entity.eventId = event.EventId
+	entity.version++
 	processor.entityLookup.cacheEntity(event.EntityId, entity, event.EventId)
 	return nil
 }
@@ -187,7 +180,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	var reqObj interface{}
 	var err error
 	if len(req) > 0 {
-		err = runtime.Json.Unmarshal(req, &reqObj)
+		err = runtime.Json.Unmarshal(req, reqObj)
 		if err != nil {
 			return replyError(err)
 		}
@@ -202,33 +195,24 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	if commandDef == nil {
 		return replyError(errors.New("handler not defined for command type " + commandType))
 	}
-	var ent *entity
-	var version uint64
-	if "create" == commandType {
-		_, err := processor.entityLookup.getEntity(ctx, partition, entityType, entityId)
-		if err == nil {
-			return replyError(withErrorNumber(errors.New("entity with same id found"), ErrDuplicatedEntity))
-		}
-		ent = &entity{
-			eventId: 0,
-			version: 1,
-			doc:     runtime.NewObject(),
-		}
-
+	err = runtime.Validate(reqObj, commandDef.requestSchema)
+	if err != nil {
+		return replyError(err)
+	}
+	ent, respObj := processor.handle(ctx, cmd, commandDef.handler, reqObj)
+	var resp []byte
+	if err, _ := respObj.(error); err != nil {
+		resp = replyError(err)
 	} else {
-		ent, err = processor.entityLookup.getEntity(ctx, partition, entityType, entityId)
+		err = runtime.Validate(respObj, commandDef.responseSchema)
 		if err != nil {
 			return replyError(err)
 		}
-	}
-	resp := commandDef.handler(ent.doc, reqObj)
-	err, _ = resp.(error)
-	if err != nil {
-		return replyError(err)
-	}
-	encodedResp, err := runtime.Json.Marshal(resp)
-	if err != nil {
-		return replyError(err)
+		resp, err = runtime.Json.Marshal(respObj)
+		if err != nil {
+			return replyError(err)
+		}
+		resp = replySuccess(resp)
 	}
 	event := &Event{
 		PartitionId:     partition,
@@ -236,15 +220,17 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 		EventId:         processor.lastEventId + 1,
 		BaseEventId:     ent.eventId,
 		EntityId:        entityId,
-		Version:         version + 1,
+		Version:         ent.version + 1,
 		CommandId:       commandId,
 		CommandType:     commandType,
 		CommandRequest:  req,
-		CommandResponse: encodedResp,
+		CommandResponse: resp,
 		CommittedAt:     time.Now().UnixNano(),
 	}
-	if version%16 == 0 {
+	if ent.version%16 == 0 {
 		event.State, err = runtime.Json.Marshal(ent.doc)
+	} else {
+		event.State = []byte("null")
 	}
 	event.Delta, err = runtime.DeltaJson.Marshal(ent.doc)
 	if err != nil {
@@ -269,8 +255,9 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	processor.lastEventId = event.EventId
 	// update in memory lookup
 	ent.eventId = event.EventId
+	ent.version = event.Version
 	processor.entityLookup.cacheEntity(event.EntityId, ent, event.EventId)
-	processor.commandLookup.cacheCommand(event.CommandId, encodedResp, event.EventId)
+	processor.commandLookup.cacheCommand(event.CommandId, resp, event.EventId)
 	// up kv store lookup in separate goroutine
 	processor.lookupSyncer.enqueue(event)
 	if cmd.IsPromoting {
@@ -278,7 +265,37 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 			topo.savePromotedMasterInBackground(ctx, partition)
 		})
 	}
-	return replySuccess(encodedResp)
+	return resp
+}
+
+func (processor *commandProcessor) handle(ctx context.Context, cmd *command, handler CommandHandler,
+	reqObj interface{}) (*entity, interface{}) {
+
+	partition := processor.partitionId
+	entityId := cmd.EntityId
+	entityType := cmd.EntityType
+	commandType := cmd.CommandType
+	ent, err := processor.entityLookup.getEntity(ctx, partition, entityType, entityId)
+	// when entityNotFoundError, the entity is nil
+	// when no error, the entity doc should be nil, as no previous command created the state
+	if ent == nil {
+		ent = &entity{
+			eventId: 0,
+			version: 0,
+		}
+	}
+	if commandType == "create" {
+		if err != nil && err != entityNotFoundError {
+			return ent, err
+		}
+		if ent.doc != nil {
+			return ent, withErrorNumber(errors.New("duplicated entity"), ErrDuplicatedEntity)
+		}
+		ent.doc = runtime.NewObject()
+	} else if err != nil {
+		return ent, err
+	}
+	return ent, handler(ent.doc, reqObj)
 }
 
 func (processor *commandProcessor) LoadOffset(ctx context.Context, partitionId uint64, entityType string) (uint64, error) {
@@ -318,9 +335,12 @@ func (processor *commandProcessor) Sync(ctx context.Context, event *Event) error
 	return nil
 }
 
-func replySuccess(encodedResp []byte) []byte {
-	// TODO: add handled_by
-	return append(append([]byte(`{"errno":0,"data":`), encodedResp...), '}')
+func replySuccess(resp []byte) []byte {
+	output := append([]byte(`{"errno":0, "handled_by":"`), thisNodeAddr...)
+	output = append(output, `", "data":`...)
+	output = append(output, resp...)
+	output = append(output, '}')
+	return output
 }
 
 type NumberedError interface {
@@ -354,11 +374,19 @@ func replyError(err error) []byte {
 	if numberedErr == nil {
 		stream.WriteVal(ErrUnknown)
 	} else {
-		stream.WriteVal(numberedErr.ErrorNumber())
+		errorNumber := numberedErr.ErrorNumber()
+		stream.WriteVal(errorNumber)
+		isCommitted := errorNumber >= LoggedErrStart && errorNumber < LoggedErrEnd
+		stream.WriteMore()
+		stream.WriteObjectField("committed")
+		stream.WriteVal(isCommitted)
 	}
 	stream.WriteMore()
 	stream.WriteObjectField("errmsg")
 	stream.WriteString(err.Error())
+	stream.WriteMore()
+	stream.WriteObjectField("handled_by")
+	stream.WriteVal(thisNodeAddr)
 	stream.WriteObjectEnd()
 	return stream.Buffer()
 }

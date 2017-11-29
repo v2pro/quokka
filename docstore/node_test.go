@@ -28,22 +28,24 @@ func Test_first_event(t *testing.T) {
 			return nil
 		}, nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:2515")
-	time.Sleep(time.Second)
 	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
 }
 
 func Test_duplicated_entity(t *testing.T) {
+	should := require.New(t)
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
-	StartNode(context.TODO(), "127.0.0.1:2515")
-	time.Sleep(time.Second)
+	ctx := context.TODO()
+	StartNode(ctx, "127.0.0.1:2515")
 	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
-	StopNode(context.TODO())
-	StartNode(context.TODO(), "127.0.0.1:2515")
+	StopNode(ctx)
+	StartNode(ctx, "127.0.0.1:2515")
 	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/create", ErrDuplicatedEntity,
 		"EntityId", "123")
+	event2 := debugGet(kvstore.HashToPartition("123"), "user", 2)
+	should.Equal(1, jsoniter.Get(event2, "b").ToInt())
 }
 
 func Test_append_more_event_log_after_restart(t *testing.T) {
@@ -56,7 +58,6 @@ func Test_append_more_event_log_after_restart(t *testing.T) {
 			return nil
 		}, nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:2515")
-	time.Sleep(time.Second)
 	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create", "EntityId", "123")
 	StopNode(context.TODO())
 	StartNode(context.TODO(), "127.0.0.1:2515")
@@ -64,18 +65,31 @@ func Test_append_more_event_log_after_restart(t *testing.T) {
 	should.Equal(1, jsoniter.Get(debugGet(kvstore.HashToPartition("123"), "user", 2), "b").ToInt())
 }
 
-func Test_cluster_commit_failure(t *testing.T) {
+func Test_key_conflict_lost_master(t *testing.T) {
 	reset("user").AddCommand("create",
+		func(doc interface{}, request interface{}) (resp interface{}) {
+			return nil
+		}, nil, nil).AddCommand("noop",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
 		}, nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:2515")
-	time.Sleep(time.Second)
-	kvstore.Append(context.TODO(), kvstore.HashToPartition("123"), "user", 1, []byte{})
-	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/create", ErrEventLogConflict,
+	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/noop", ErrEntityNotFound,
 		"EntityId", "123")
-	time.Sleep(time.Second)
-	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/user/create",
+	event, _ := eventJson.Marshal(&Event{
+		EntityId:        "123",
+		BaseEventId:     0,
+		Version:         1,
+		CommandId:       "",
+		CommandType:     "create",
+		CommandRequest:  []byte("{}"),
+		CommandResponse: []byte("{}"),
+		State:           []byte("{}"),
+		Delta:           []byte("{}"),
+		CommittedAt:     time.Now().UnixNano(),
+	})
+	kvstore.Append(context.TODO(), kvstore.HashToPartition("123"), "user", 1, event)
+	execAndExpectError(t, "http://127.0.0.1:2515/docstore/user/noop", ErrEventLogConflict,
 		"EntityId", "123")
 }
 

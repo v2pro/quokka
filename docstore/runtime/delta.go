@@ -24,7 +24,7 @@ type Object interface {
 
 func (obj *DObject) Set(keyObj interface{}, value interface{}) {
 	key := keyObj.(string)
-	obj.validate(key, value)
+	obj.validateKey(key, value)
 	obj.data[key] = value
 	if obj.updated == nil {
 		obj.updated = map[string]interface{}{}
@@ -32,7 +32,7 @@ func (obj *DObject) Set(keyObj interface{}, value interface{}) {
 	obj.updated[key] = value
 }
 
-func (obj *DObject) validate(key string, value interface{}) {
+func (obj *DObject) validateKey(key string, value interface{}) {
 	defer func() {
 		recovered := recover()
 		if recovered != nil {
@@ -55,13 +55,13 @@ func (obj *DObject) validate(key string, value interface{}) {
 	if schema.Fields != nil {
 		obj := value.(*DObject)
 		obj.Schema = schema
-		obj.validateExisting()
+		obj.validate()
 	}
 }
 
-func (obj *DObject) validateExisting() {
+func (obj *DObject) validate() {
 	for key, value := range obj.data {
-		obj.validate(key, value)
+		obj.validateKey(key, value)
 	}
 }
 

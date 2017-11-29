@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/v2pro/quokka/docstore/thrift"
 	"github.com/antlr/antlr4/runtime/Go/antlr"
+	"fmt"
 )
 
 type Schema struct {
@@ -60,4 +61,26 @@ func fillField(schema *Schema, field *thrift.FieldContext) {
 	fieldType := field.GetChild(idx).GetChild(0).GetChild(0).GetPayload().(*antlr.CommonToken).GetText()
 	fieldName := field.GetChild(idx + 1).GetPayload().(*antlr.CommonToken).GetText()
 	schema.Fields[fieldName] = thriftTypes[fieldType]
+}
+
+func Validate(obj interface{}, schema *Schema) (err error) {
+	defer func() {
+		recovered := recover()
+		if recovered != nil {
+			err, _ = recovered.(error)
+			if err == nil {
+				err = errors.New(fmt.Sprintf("%v", recovered))
+			}
+		}
+	}()
+	if schema == nil {
+		return nil
+	}
+	dobj, _ := obj.(*DObject)
+	if dobj == nil {
+		return fmt.Errorf("%v is not DObject", obj)
+	}
+	dobj.Schema = schema
+	dobj.validate()
+	return nil
 }

@@ -3,7 +3,6 @@ package runtime
 import (
 	"testing"
 	"github.com/stretchr/testify/require"
-	"fmt"
 )
 
 func clone(obj interface{}) interface{} {
@@ -45,8 +44,6 @@ func Test_patch_one_level(t *testing.T) {
 	delta, err := DeltaJson.MarshalToString(root)
 	should.Nil(err)
 	should.Equal(`{"__patched__":{"leaf":{"__updated__":{"hello":"world"}}}}`, delta)
-	fmt.Println(Dump(origRoot))
 	should.Nil(DeltaJson.UnmarshalFromString(delta, &origRoot))
-	fmt.Println(Dump(origRoot))
 	should.Equal(Dump(root), Dump(origRoot))
 }
