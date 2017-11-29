@@ -27,7 +27,7 @@ type command struct {
 	EntityId       string
 	CommandId      string
 	CommandRequest json.RawMessage
-	IsPromoting	   bool // update topo when command executed successfully
+	IsPromoting    bool // update topo when command executed successfully
 	respChan       chan []byte
 }
 
@@ -156,8 +156,9 @@ func (processor *commandProcessor) exec(cmd *command) []byte {
 		return replyError(err)
 	}
 	event := &Event{
-		EventId:         processor.lastEventId + 1,
 		Partition:       partition,
+		EntityType:      entityType,
+		EventId:         processor.lastEventId + 1,
 		BaseEventId:     ent.eventId,
 		EntityId:        entityId,
 		Version:         version + 1,
@@ -178,7 +179,7 @@ func (processor *commandProcessor) exec(cmd *command) []byte {
 	if err != nil {
 		return replyError(err)
 	}
-	err = kvstore.Append(processor.partition, event.EventId, encodedEvent)
+	err = kvstore.Append(processor.partition, event.EntityType, event.EventId, encodedEvent)
 	if err != nil {
 		return replyError(err)
 	}
@@ -199,21 +200,21 @@ func (processor *commandProcessor) exec(cmd *command) []byte {
 	return replySuccess(encodedResp)
 }
 
-func (processor *commandProcessor) LoadOffset(partitionId uint64) (uint64, error) {
-	offset, err := kvstore.GetMonotonic(partitionId, "offset")
+func (processor *commandProcessor) LoadOffset(partitionId uint64, entityType string) (uint64, error) {
+	offset, err := kvstore.GetMonotonic(partitionId, entityType, "offset")
 	if err != nil {
 		return 0, err
 	}
 	return offset, nil
 }
 
-func (processor *commandProcessor) CommitOffset(partitionId uint64, offset uint64) error {
-	return kvstore.SetMonotonic(partitionId, "offset", offset)
+func (processor *commandProcessor) CommitOffset(partitionId uint64, entityType string, offset uint64) error {
+	return kvstore.SetMonotonic(partitionId, entityType, "offset", offset)
 }
 
 func (processor *commandProcessor) Sync(event *Event) error {
 	go forwardEventInBackground(event)
-	err := processor.entityLookup.setEventId(event.Partition, event.EntityId, event.EventId)
+	err := processor.entityLookup.setEventId(event.Partition, event.EntityType, event.EntityId, event.EventId)
 	if err != nil {
 		countlog.Error("event!core_event_handler.failed to update entity lookup",
 			"err", err,
@@ -222,7 +223,7 @@ func (processor *commandProcessor) Sync(event *Event) error {
 			"eventId", event.EventId)
 		return err
 	}
-	err = processor.entityLookup.setEventId(event.Partition, event.CommandId, event.EventId)
+	err = processor.entityLookup.setEventId(event.Partition, event.EntityType, event.CommandId, event.EventId)
 	if err != nil {
 		countlog.Error("event!core_event_handler.failed to update command lookup",
 			"err", err,

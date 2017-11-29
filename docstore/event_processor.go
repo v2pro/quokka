@@ -12,16 +12,18 @@ var subscribersMutex = &sync.Mutex{}
 
 type eventProcessor struct {
 	partitionId uint64
-	offset    uint64
-	inbox     eventInbox
-	handler   EventHandler
+	entityType  string
+	offset      uint64
+	inbox       eventInbox
+	handler     EventHandler
 }
 
 type eventInbox chan *Event
 
 type Event struct {
-	EventId         uint64 `json:"-"`
 	Partition       uint64 `json:"-"`
+	EntityType      string `json:"-"`
+	EventId         uint64 `json:"-"`
 	EntityId        string `json:"e"`
 	BaseEventId     uint64 `json:"b"`
 	Version         uint64 `json:"v"`
@@ -35,8 +37,8 @@ type Event struct {
 }
 
 type EventHandler interface {
-	LoadOffset(partitionId uint64) (uint64, error)
-	CommitOffset(partitionId uint64, offset uint64) error
+	LoadOffset(partitionId uint64, entityType string) (uint64, error)
+	CommitOffset(partitionId uint64, entityType string, offset uint64) error
 	Sync(event *Event) error
 }
 
@@ -68,8 +70,8 @@ func AddEventHandler(handler EventHandler) {
 func newEventProcessor(partitionId uint64, handler EventHandler) *eventProcessor {
 	return &eventProcessor{
 		partitionId: partitionId,
-		inbox:     make(chan *Event, 1024),
-		handler:   handler,
+		inbox:       make(chan *Event, 1024),
+		handler:     handler,
 	}
 }
 
@@ -108,7 +110,7 @@ func (processor *eventProcessor) syncInBackground() {
 		event := <-processor.inbox
 		if processor.offset == 0 {
 			for {
-				offset, err := processor.handler.LoadOffset(processor.partitionId)
+				offset, err := processor.handler.LoadOffset(processor.partitionId, processor.entityType)
 				if err != nil {
 					countlog.Error("event!event_processor.failed to init",
 						"partition", processor.partitionId, "err", err)
@@ -140,7 +142,7 @@ func (processor *eventProcessor) syncOnce(event *Event) {
 	var events []*Event
 	for {
 		var err error
-		events, err = scanEvents(processor.partitionId, processor.offset+1, event.EventId)
+		events, err = scanEvents(processor.partitionId, processor.entityType, processor.offset+1, event.EventId)
 		if err != nil {
 			countlog.Error("event!event_processor.failed to scan events",
 				"partition", processor.partitionId,
@@ -166,7 +168,7 @@ func (processor *eventProcessor) syncOnce(event *Event) {
 		}
 	}
 	processor.offset = event.EventId
-	err := processor.handler.CommitOffset(processor.partitionId, event.EventId)
+	err := processor.handler.CommitOffset(processor.partitionId, processor.entityType, event.EventId)
 	if err != nil {
 		countlog.Warn("event!event_processor.failed to commit offset",
 			"partition", processor.partitionId,

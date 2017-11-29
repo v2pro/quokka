@@ -34,6 +34,9 @@ func (topo topology) setPromotingMaster(partitionId uint64, master string) {
 	defer topoMutex.Unlock()
 	topo[partitionId].master = master
 	topo[partitionId].isPromoting = true
+	countlog.Info("event!topo.promoting master",
+		"partitionId", partitionId,
+		"master", master)
 }
 
 func (topo topology) setPromotedMaster(partitionId uint64, master string) {
@@ -41,6 +44,9 @@ func (topo topology) setPromotedMaster(partitionId uint64, master string) {
 	defer topoMutex.Unlock()
 	topo[partitionId].master = master
 	topo[partitionId].isPromoting = false
+	countlog.Info("event!topo.promoted master",
+		"partitionId", partitionId,
+			"master", master)
 }
 
 // if the master changed, clear the master
@@ -48,8 +54,12 @@ func (topo topology) setPromotedMaster(partitionId uint64, master string) {
 func (topo topology) clearMaster(partitionId uint64) {
 	topoMutex.Lock()
 	defer topoMutex.Unlock()
+	oldMaster := topo[partitionId].master
 	topo[partitionId].master = ""
 	topo[partitionId].isPromoting = false
+	countlog.Info("event!topo.clear master",
+		"partitionId", partitionId,
+		"oldMaster", oldMaster)
 }
 
 func (topo topology) refresh(partitionId uint64) (string, error) {

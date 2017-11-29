@@ -74,6 +74,10 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 	partitionId := kvstore.HashToPartition(cmd.EntityId)
 	var commandResp []byte
 	target, isLocal := chooseCommandTarget(partitionId, &cmd, req)
+	countlog.Trace("event!node.choose command target",
+		"target", target,
+			"isLocal", isLocal,
+				"cmd", &cmd)
 	if isLocal {
 		commandResp = commandProcessors[partitionId].delegatedExec(&cmd, time.Second)
 	} else {
@@ -85,7 +89,7 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 
 func chooseCommandTarget(partitionId uint64, cmd *command, req *http.Request) (string, bool) {
 	if cmd.IsPromoting {
-		return "", false
+		return "", true
 	}
 	ctx := req.Context()
 	localAddr, _ := ctx.Value(http.LocalAddrContextKey).(*net.TCPAddr)
@@ -100,7 +104,7 @@ func chooseCommandTarget(partitionId uint64, cmd *command, req *http.Request) (s
 	if master != localAddr.String() {
 		return master, false
 	}
-	return "", false
+	return "", true
 }
 
 func forwardCommand(target string, cmd *command) []byte {

@@ -28,7 +28,7 @@ func ResetKVStore() {
 	kvstore.SetMonotonic = memSetMonotonic
 }
 
-func memGet(partition uint64, rowKey uint64) ([]byte, error) {
+func memGet(partition uint64, namespace string, rowKey uint64) ([]byte, error) {
 	if partition < 0 || partition >= uint64(len(memPartitions)) {
 		return nil, errors.New("partition not found")
 	}
@@ -39,7 +39,7 @@ func memGet(partition uint64, rowKey uint64) ([]byte, error) {
 	return rows[rowKey], nil
 }
 
-func memAppend(partition uint64, rowKey uint64, rowValue []byte) error {
+func memAppend(partition uint64, namespace string, rowKey uint64, rowValue []byte) error {
 	if partition < 0 || partition >= uint64(len(memPartitions)) {
 		return errors.New("partition not found")
 	}
@@ -52,6 +52,17 @@ func memAppend(partition uint64, rowKey uint64, rowValue []byte) error {
 	}
 	rows = append(rows, rowValue)
 	memPartitions[partition] = rows
+	return nil
+}
+
+func memGetMonotonic(partition uint64, namespace string, key string) (uint64, error) {
+	return memMonotonics[partition][key], nil
+}
+
+func memSetMonotonic(partition uint64, namespace string, key string, value uint64) error {
+	if value > memMonotonics[partition][key] {
+		memMonotonics[partition][key] = value
+	}
 	return nil
 }
 
@@ -93,15 +104,4 @@ func memScanMetadata(fromKey string, toKey string) (kvstore.MetadataRowIterator,
 		}
 		return found, nil
 	}, nil
-}
-
-func memGetMonotonic(partition uint64, key string) (uint64, error) {
-	return memMonotonics[partition][key], nil
-}
-
-func memSetMonotonic(partition uint64, key string, value uint64) error {
-	if value > memMonotonics[partition][key] {
-		memMonotonics[partition][key] = value
-	}
-	return nil
 }

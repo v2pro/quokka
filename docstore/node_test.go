@@ -11,7 +11,7 @@ import (
 	"bytes"
 )
 
-func Test_happy_path(t *testing.T) {
+func Test_cluster_first_node(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil

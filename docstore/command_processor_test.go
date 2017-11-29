@@ -25,7 +25,7 @@ func Test_create_object(t *testing.T) {
 	})
 	should.Equal("", jsoniter.Get(resp, "errmsg").ToString())
 	should.Equal("hello", jsoniter.Get(resp, "data").ToString())
-	should.True(jsoniter.Get(debugGet(0, 1), "s").ToBool())
+	should.True(jsoniter.Get(debugGet(0, "user", 1), "s").ToBool())
 }
 
 func Test_get_object(t *testing.T) {
@@ -62,8 +62,8 @@ func reset(entityType string) *entityTypeDef {
 	return AddEntity(entityType, nil)
 }
 
-func debugGet(partitionId uint64, rowKey uint64) []byte {
-	row, err := kvstore.Get(partitionId, rowKey)
+func debugGet(partitionId uint64, entityType string, rowKey uint64) []byte {
+	row, err := kvstore.Get(partitionId, entityType, rowKey)
 	if err != nil {
 		panic(err)
 	}
