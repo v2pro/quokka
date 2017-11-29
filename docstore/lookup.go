@@ -3,6 +3,7 @@ package docstore
 import (
 	"github.com/v2pro/quokka/kvstore"
 	"errors"
+	"context"
 )
 
 type entityLookup struct {
@@ -23,24 +24,24 @@ func newEntityLookup() *entityLookup {
 	}
 }
 
-func (lookup *entityLookup) getEntity(partitionId uint64, entityType string, entityId string) (*entity, error) {
+func (lookup *entityLookup) getEntity(ctx context.Context, partitionId uint64, entityType string, entityId string) (*entity, error) {
 	cachedVal := lookup.memLookup.getCacheValue(entityId)
 	if cachedVal != nil {
 		return cachedVal.(*entity), nil
 	}
-	eventId, err := lookup.kvstoreLookup.getEventId(partitionId, entityType, entityId, lookup.memLookup.cache2StartVersion)
+	eventId, err := lookup.kvstoreLookup.getEventId(ctx, partitionId, entityType, entityId, lookup.memLookup.cache2StartVersion)
 	if err != nil {
 		return nil, err
 	}
-	return loadEntity(partitionId, entityType, entityId, eventId)
+	return loadEntity(ctx, partitionId, entityType, entityId, eventId)
 }
 
 func (lookup *entityLookup) cacheEntity(entityId string, value *entity, version uint64) {
 	lookup.memLookup.setCacheValue(entityId, value, version)
 }
 
-func (lookup *entityLookup) setEventId(partitionId uint64, entityType string, entityId string, eventId uint64) error {
-	return lookup.kvstoreLookup.setEventId(partitionId, entityType, entityId, eventId)
+func (lookup *entityLookup) setEventId(ctx context.Context, partitionId uint64, entityType string, entityId string, eventId uint64) error {
+	return lookup.kvstoreLookup.setEventId(ctx, partitionId, entityType, entityId, eventId)
 }
 
 type commandLookup struct {
@@ -61,24 +62,24 @@ func newCommandLookup() *commandLookup {
 	}
 }
 
-func (lookup *commandLookup) getCommand(partitionId uint64, entityType string, commandId string) ([]byte, error) {
+func (lookup *commandLookup) getCommand(ctx context.Context, partitionId uint64, entityType string, commandId string) ([]byte, error) {
 	cachedVal := lookup.memLookup.getCacheValue(commandId)
 	if cachedVal != nil {
 		return cachedVal.([]byte), nil
 	}
-	eventId, err := lookup.kvstoreLookup.getEventId(partitionId, entityType, commandId, lookup.memLookup.cache2StartVersion)
+	eventId, err := lookup.kvstoreLookup.getEventId(ctx, partitionId, entityType, commandId, lookup.memLookup.cache2StartVersion)
 	if err != nil {
 		return nil, err
 	}
-	return getCommandResponse(partitionId, entityType, eventId)
+	return getCommandResponse(ctx, partitionId, entityType, eventId)
 }
 
 func (lookup *commandLookup) cacheCommand(commandId string, value []byte, version uint64) {
 	lookup.memLookup.setCacheValue(commandId, value, version)
 }
 
-func (lookup *commandLookup) setEventId(partitionId uint64, entityType string, commandId string, eventId uint64) error {
-	return lookup.kvstoreLookup.setEventId(partitionId, entityType, commandId, eventId)
+func (lookup *commandLookup) setEventId(ctx context.Context, partitionId uint64, entityType string, commandId string, eventId uint64) error {
+	return lookup.kvstoreLookup.setEventId(ctx, partitionId, entityType, commandId, eventId)
 }
 
 type memLookup struct {
@@ -121,21 +122,25 @@ type kvstoreLookup struct {
 	prefix string
 }
 
-func (lookup *kvstoreLookup) getEventId(partitionId uint64, entityType string, key string, minVersion uint64) (uint64, error) {
-	offset, err := kvstore.GetMonotonic(partitionId, entityType, "offset")
+func (lookup *kvstoreLookup) getEventId(ctx context.Context, partitionId uint64, entityType string, key string, minVersion uint64) (uint64, error) {
+	offset, err := lookup.getOffset(ctx, partitionId, entityType)
 	if err != nil {
 		return 0, err
 	}
 	if offset < minVersion {
 		return 0, errors.New("lookup is too old")
 	}
-	value, err := kvstore.GetMonotonic(partitionId, entityType, lookup.prefix+key)
+	value, err := kvstore.GetMonotonic(ctx, partitionId, entityType, lookup.prefix+key)
 	if err != nil {
 		return 0, err
 	}
 	return value, nil
 }
 
-func (lookup *kvstoreLookup) setEventId(partitionId uint64, entityType string, key string, eventId uint64) error {
-	return kvstore.SetMonotonic(partitionId, entityType, lookup.prefix+key, eventId)
+func (lookup *kvstoreLookup) getOffset(ctx context.Context, partitionId uint64, entityType string) (uint64, error) {
+	return kvstore.GetMonotonic(ctx, partitionId, entityType, lookup.prefix+"offset")
+}
+
+func (lookup *kvstoreLookup) setEventId(ctx context.Context, partitionId uint64, entityType string, key string, eventId uint64) error {
+	return kvstore.SetMonotonic(ctx, partitionId, entityType, lookup.prefix+key, eventId)
 }

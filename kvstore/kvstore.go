@@ -3,6 +3,7 @@ package kvstore
 import (
 	"errors"
 	"github.com/spaolacci/murmur3"
+	"context"
 )
 
 const ZonesCount = 32
@@ -29,15 +30,15 @@ type Row struct {
 }
 type RowIterator func() ([]Row, error)
 
-var Get = func(partition uint64, namespace string, key uint64) ([]byte, error) {
+var Get = func(ctx context.Context, partition uint64, namespace string, key uint64) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
-var Scan = func(partition uint64, namespace string, fromKey uint64) (RowIterator, error) {
+var Scan = func(ctx context.Context, partition uint64, namespace string, fromKey uint64) (RowIterator, error) {
 	return nil, errors.New("not implemented")
 }
 
-var Append = func(partition uint64, namespace string, key uint64, rowValue []byte) error {
+var Append = func(ctx context.Context, partition uint64, namespace string, key uint64, rowValue []byte) error {
 	return errors.New("not implemented")
 }
 
@@ -46,11 +47,11 @@ var Append = func(partition uint64, namespace string, key uint64, rowValue []byt
 // command lookup:
 // command id => event id
 
-var GetMonotonic = func(partition uint64, namespace string, key string) (uint64, error) {
+var GetMonotonic = func(ctx context.Context, partition uint64, namespace string, key string) (uint64, error) {
 	return 0, errors.New("not implemented")
 }
 
-var SetMonotonic = func(partition uint64, namespace string, key string, value uint64) error {
+var SetMonotonic = func(ctx context.Context, partition uint64, namespace string, key string, value uint64) error {
 	return errors.New("not implemented")
 }
 
@@ -64,15 +65,15 @@ type MetadataRow struct {
 }
 type MetadataRowIterator func() ([]MetadataRow, error)
 
-var GetMetadata = func(key string) ([]byte, error) {
+var GetMetadata = func(ctx context.Context, key string) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
-var SetMetadata = func(key string, value []byte) error {
+var SetMetadata = func(ctx context.Context, key string, value []byte) error {
 	return errors.New("not implemented")
 }
 
 // [fromKey, toKey] ordered lexically
-var ScanMetadata = func(fromKey string, toKey string) (MetadataRowIterator, error) {
+var ScanMetadata = func(ctx context.Context, fromKey string, toKey string) (MetadataRowIterator, error) {
 	return nil, errors.New("not implemented")
 }

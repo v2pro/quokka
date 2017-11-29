@@ -8,12 +8,16 @@ import (
 	"github.com/v2pro/plz/countlog"
 	"github.com/json-iterator/go"
 	"encoding/json"
+	"context"
 )
 
-var commandProcessors = make([]*commandProcessor, kvstore.PartitionsCount)
+const ErrUnknown = 1000
+const ErrEventLogConflict = 1001 // the master is no longer in charge, should find out who is the master
+var commandProcessors = make([]map[string]*commandProcessor, kvstore.PartitionsCount)
 
 type commandProcessor struct {
-	partition     uint64
+	partitionId   uint64
+	entityType    string
 	reqChan       chan *command
 	lastEventId   uint64
 	entityLookup  *entityLookup
@@ -42,18 +46,15 @@ type commandCache struct {
 }
 
 func init() {
-	for i := 0; i < len(commandProcessors); i++ {
-		partition := uint64(i)
-		processor := newCommandProcessor(partition)
-		go processor.executeInBackground()
-		go processor.lookupSyncer.syncInBackground()
-		commandProcessors[i] = processor
+	for partitionId := uint64(0); partitionId < kvstore.PartitionsCount; partitionId++ {
+		commandProcessors[partitionId] = map[string]*commandProcessor{}
 	}
 }
 
-func newCommandProcessor(partitionId uint64) *commandProcessor {
+func newCommandProcessor(partitionId uint64, entityType string) *commandProcessor {
 	processor := &commandProcessor{
-		partition:     partitionId,
+		partitionId:   partitionId,
+		entityType:    entityType,
 		reqChan:       make(chan *command),
 		entityLookup:  newEntityLookup(),
 		commandLookup: newCommandLookup(),
@@ -62,20 +63,89 @@ func newCommandProcessor(partitionId uint64) *commandProcessor {
 	return processor
 }
 
-func (processor *commandProcessor) executeInBackground() {
-	defer func() {
-		recovered := recover()
-		if recovered != nil {
-			countlog.Fatal("event!command_processor.executeInBackground.panic", "err", recovered,
-				"stacktrace", countlog.ProvideStacktrace)
-		}
-	}()
+func (processor *commandProcessor) init(ctx context.Context) error {
+	offset, err := processor.entityLookup.kvstoreLookup.getOffset(ctx, processor.partitionId, processor.entityType)
+	if err != nil {
+		return err
+	}
+	iter, err := kvstore.Scan(ctx, processor.partitionId, processor.entityType, offset+1)
+	if err != nil {
+		return err
+	}
 	for {
-		processor.executeOne()
+		rows, err := iter()
+		if err != nil {
+			return err
+		}
+		if rows == nil {
+			processor.lastEventId = offset
+			return nil
+		}
+		for _, row := range rows {
+			offset = row.Key
+			var event Event
+			err = runtime.Json.Unmarshal(row.Value, &event)
+			if err != nil {
+				countlog.Error("event!command_processor.failed to unmarshal event",
+					"err", err,
+					"encodedEvent", row.Value)
+				return err
+			}
+			processor.commandLookup.cacheCommand(event.CommandId, event.CommandResponse, event.EventId)
+			err := processor.replayEvent(ctx, &event)
+			if err != nil {
+				return err
+			}
+		}
 	}
 }
 
-func (processor *commandProcessor) executeOne() {
+func (processor *commandProcessor) replayEvent(ctx context.Context, event *Event) error {
+	var err error
+	if event.State != nil {
+		var doc = runtime.NewObject()
+		err = runtime.Json.Unmarshal(event.State, doc)
+		if err != nil {
+			countlog.Error("event!command_processor.failed to unmarshal state",
+				"err", err,
+				"state", event.State)
+			return err
+		}
+		processor.entityLookup.cacheEntity(event.EntityId, &entity{
+			eventId: event.EventId,
+			version: event.Version,
+			doc:     doc,
+		}, event.EventId)
+		return nil
+	}
+	entity, _ := processor.entityLookup.memLookup.getCacheValue(event.EntityId).(*entity)
+	if entity == nil {
+		entity, err = loadEntity(ctx, processor.partitionId, processor.entityType, event.EntityId, event.BaseEventId)
+		if err != nil {
+			return err
+		}
+	}
+	err = runtime.DeltaJson.Unmarshal(event.Delta, entity.doc)
+	if err != nil {
+		countlog.Error("event!command_processor.failed to apply delta",
+			"err", err,
+			"state", event.State)
+		return err
+	}
+	processor.entityLookup.cacheEntity(event.EntityId, entity, event.EventId)
+	return nil
+}
+
+func (processor *commandProcessor) executeInBackground(ctx context.Context) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		processor.executeOne(ctx)
+	}
+}
+
+func (processor *commandProcessor) executeOne(ctx context.Context) {
 	defer func() {
 		recovered := recover()
 		if recovered != nil {
@@ -83,9 +153,13 @@ func (processor *commandProcessor) executeOne() {
 				"stacktrace", countlog.ProvideStacktrace)
 		}
 	}()
-	command := <-processor.reqChan
-	resp := processor.exec(command)
-	command.respChan <- resp
+	select {
+	case command := <-processor.reqChan:
+		resp := processor.exec(ctx, command)
+		command.respChan <- resp
+	case <-ctx.Done():
+		return
+	}
 }
 
 func (processor *commandProcessor) delegatedExec(cmd *command, timeout time.Duration) []byte {
@@ -100,12 +174,8 @@ func (processor *commandProcessor) delegatedExec(cmd *command, timeout time.Dura
 	}
 }
 
-func (processor *commandProcessor) init(execReq *command) {
-	// TODO: load initial state
-}
-
-func (processor *commandProcessor) exec(cmd *command) []byte {
-	partition := processor.partition
+func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byte {
+	partition := processor.partitionId
 	entityId := cmd.EntityId
 	req := cmd.CommandRequest
 	entityType := cmd.EntityType
@@ -130,7 +200,7 @@ func (processor *commandProcessor) exec(cmd *command) []byte {
 	var ent *entity
 	var version uint64
 	if "create" == commandType {
-		_, err := processor.entityLookup.getEntity(partition, entityType, entityId)
+		_, err := processor.entityLookup.getEntity(ctx, partition, entityType, entityId)
 		if err == nil {
 			return replyError(errors.New("entity with same id found"))
 		}
@@ -141,7 +211,7 @@ func (processor *commandProcessor) exec(cmd *command) []byte {
 		}
 
 	} else {
-		ent, err = processor.entityLookup.getEntity(partition, entityType, entityId)
+		ent, err = processor.entityLookup.getEntity(ctx, partition, entityType, entityId)
 		if err != nil {
 			return replyError(err)
 		}
@@ -179,12 +249,15 @@ func (processor *commandProcessor) exec(cmd *command) []byte {
 	if err != nil {
 		return replyError(err)
 	}
-	err = kvstore.Append(processor.partition, event.EntityType, event.EventId, encodedEvent)
+	err = kvstore.Append(ctx, processor.partitionId, event.EntityType, event.EventId, encodedEvent)
 	if err != nil {
+		if err == kvstore.KeyConflictError {
+			return replyError(withErrorNumber(err, ErrEventLogConflict))
+		}
 		return replyError(err)
 	}
 	countlog.Trace("event!docstore.stored event",
-		"partition", processor.partition,
+		"partitionId", processor.partitionId,
 		"eventId", event.EventId,
 		"encodedEvent", encodedEvent)
 	processor.lastEventId = event.EventId
@@ -195,39 +268,43 @@ func (processor *commandProcessor) exec(cmd *command) []byte {
 	// up kv store lookup in separate goroutine
 	processor.lookupSyncer.enqueue(event)
 	if cmd.IsPromoting {
-		go topo.savePromotedMasterInBackground(partition)
+		thisNodeExecutor.Go(func(ctx context.Context) {
+			topo.savePromotedMasterInBackground(ctx, partition)
+		})
 	}
 	return replySuccess(encodedResp)
 }
 
-func (processor *commandProcessor) LoadOffset(partitionId uint64, entityType string) (uint64, error) {
-	offset, err := kvstore.GetMonotonic(partitionId, entityType, "offset")
+func (processor *commandProcessor) LoadOffset(ctx context.Context, partitionId uint64, entityType string) (uint64, error) {
+	offset, err := kvstore.GetMonotonic(ctx, partitionId, entityType, "offset")
 	if err != nil {
 		return 0, err
 	}
 	return offset, nil
 }
 
-func (processor *commandProcessor) CommitOffset(partitionId uint64, entityType string, offset uint64) error {
-	return kvstore.SetMonotonic(partitionId, entityType, "offset", offset)
+func (processor *commandProcessor) CommitOffset(ctx context.Context, partitionId uint64, entityType string, offset uint64) error {
+	return kvstore.SetMonotonic(ctx, partitionId, entityType, "offset", offset)
 }
 
-func (processor *commandProcessor) Sync(event *Event) error {
-	go forwardEventInBackground(event)
-	err := processor.entityLookup.setEventId(event.Partition, event.EntityType, event.EntityId, event.EventId)
+func (processor *commandProcessor) Sync(ctx context.Context, event *Event) error {
+	thisNodeExecutor.Go(func(ctx context.Context) {
+		forwardEventInBackground(ctx, event)
+	})
+	err := processor.entityLookup.setEventId(ctx, event.Partition, event.EntityType, event.EntityId, event.EventId)
 	if err != nil {
 		countlog.Error("event!core_event_handler.failed to update entity lookup",
 			"err", err,
-			"partition", event.Partition,
+			"partitionId", event.Partition,
 			"entityId", event.EntityId,
 			"eventId", event.EventId)
 		return err
 	}
-	err = processor.entityLookup.setEventId(event.Partition, event.EntityType, event.CommandId, event.EventId)
+	err = processor.entityLookup.setEventId(ctx, event.Partition, event.EntityType, event.CommandId, event.EventId)
 	if err != nil {
 		countlog.Error("event!core_event_handler.failed to update command lookup",
 			"err", err,
-			"partition", event.Partition,
+			"partitionId", event.Partition,
 			"entityId", event.EntityId,
 			"eventId", event.EventId)
 		return err
@@ -240,12 +317,39 @@ func replySuccess(encodedResp []byte) []byte {
 	return append(append([]byte(`{"errno":0,"data":`), encodedResp...), '}')
 }
 
+type NumberedError interface {
+	error
+	ErrorNumber() int
+}
+
+type numberedError struct {
+	errorNumber int
+	err         error
+}
+
+func (err *numberedError) Error() string {
+	return err.err.Error()
+}
+
+func (err *numberedError) ErrorNumber() int {
+	return err.errorNumber
+}
+
+func withErrorNumber(err error, errorNumber int) *numberedError {
+	return &numberedError{err: err, errorNumber: errorNumber}
+}
+
 func replyError(err error) []byte {
 	stream := jsoniter.ConfigFastest.BorrowStream(nil)
 	defer jsoniter.ConfigFastest.ReturnStream(stream)
 	stream.WriteObjectStart()
 	stream.WriteObjectField("errno")
-	stream.WriteVal(1)
+	numberedErr, _ := err.(NumberedError)
+	if numberedErr == nil {
+		stream.WriteVal(ErrUnknown)
+	} else {
+		stream.WriteVal(numberedErr.ErrorNumber())
+	}
 	stream.WriteMore()
 	stream.WriteObjectField("errmsg")
 	stream.WriteString(err.Error())

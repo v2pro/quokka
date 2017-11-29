@@ -6,6 +6,8 @@ import (
 	"time"
 	"github.com/v2pro/plz/countlog"
 	"errors"
+	"github.com/v2pro/plz/concurrent"
+	"context"
 )
 
 // node.go use cluster.go to track the cluster nodes, including
@@ -18,34 +20,35 @@ type nodeStatus struct {
 	Addr      string
 	Heartbeat time.Time
 	// we use the master partitions count saved by heartbeat
-	// instead of inferring the load from partition topo
-	// because the partition topo might out of sync
+	// instead of inferring the load from partitionId topo
+	// because the partitionId topo might out of sync
 	// this MasterPartitionsCount is saved with heartbeat, should be more reliable
 	MasterPartitionsCount int
-	isDead                bool // according to heartbeat
+	isDead                bool       // according to heartbeat
 	isBlacklisted         *time.Time // according to error rate
 }
 
-var thisNodeAddr string
-
-func publishNode(addr string) error {
+func publishNode(ctx context.Context, addr string) error {
 	thisNodeAddr = addr
 	cluster := map[string]*nodeStatus{
 		addr: {Addr: addr},
 	}
-	_, err := refreshMasterNodesStatus(cluster)
+	_, err := refreshMasterNodesStatus(ctx, cluster)
 	if err != nil {
 		return err
 	}
-	err = topo.rebalance(cluster)
+	err = topo.rebalance(ctx, cluster)
 	if err != nil {
 		return err
 	}
-	err = joinCluster(cluster[thisNodeAddr], false)
+	err = joinCluster(ctx, cluster[thisNodeAddr], false)
 	if err != nil {
 		return err
 	}
-	go refreshAndRebalanceInBackground(cluster)
+	thisNodeStarted = true
+	thisNodeExecutor.Go(func(ctx context.Context) {
+		refreshAndRebalanceInBackground(ctx, cluster)
+	})
 	return nil
 }
 
@@ -65,44 +68,42 @@ func triggerTopoChanged() {
 }
 
 // rebalance will only be triggered from this goroutine
-func refreshAndRebalanceInBackground(cluster map[string]*nodeStatus) {
-	defer func() {
-		recovered := recover()
-		if recovered != nil {
-			countlog.Fatal("event!cluster.trackClusterInBackground.panic",
-				"err", recovered,
-				"stacktrace", countlog.ProvideStacktrace)
-		}
-	}()
+func refreshAndRebalanceInBackground(ctx context.Context, cluster map[string]*nodeStatus) {
 	for {
-		refreshAndRebalanceOnce(cluster)
+		if ctx.Err() != nil {
+			return
+		}
+		refreshAndRebalanceOnce(ctx, cluster)
 	}
 }
 
-func refreshAndRebalanceOnce(cluster map[string]*nodeStatus) {
+func refreshAndRebalanceOnce(ctx context.Context, cluster map[string]*nodeStatus) {
 	defer func() {
 		recovered := recover()
+		if recovered == concurrent.StopSignal {
+			panic(concurrent.StopSignal)
+		}
 		if recovered != nil {
 			countlog.Fatal("event!cluster.refreshAndRebalanceOnce.panic",
 				"err", recovered,
 				"stacktrace", countlog.ProvideStacktrace)
 		}
 	}()
-	isTopoChanged := sleepBetweenRefreshing()
-	isClusterChanged, err := refreshMasterNodesStatus(cluster)
+	isTopoChanged := sleepBetweenRefreshing(ctx)
+	isClusterChanged, err := refreshMasterNodesStatus(ctx, cluster)
 	if err != nil {
 		countlog.Warn("event!cluster.failed to refresh cluster", "err", err)
 	}
 	if isTopoChanged || isClusterChanged {
-		topo.rebalance(cluster)
+		topo.rebalance(ctx, cluster)
 	}
-	err = joinCluster(cluster[thisNodeAddr], false)
+	err = joinCluster(ctx, cluster[thisNodeAddr], false)
 	if err != nil {
 		countlog.Warn("event!cluster.failed to update heartbeat", "err", err)
 	}
 }
 
-func sleepBetweenRefreshing() bool {
+func sleepBetweenRefreshing(ctx context.Context) bool {
 	timer := time.NewTimer(time.Minute)
 	select {
 	case <-timer.C:
@@ -110,26 +111,28 @@ func sleepBetweenRefreshing() bool {
 	case <-topoChanged:
 		timer.Stop()
 		return true
+	case <-ctx.Done():
+		panic(concurrent.StopSignal)
 	}
 }
 
 // tell other nodes about myself
-func joinCluster(node *nodeStatus, isSlave bool) error {
+func joinCluster(ctx context.Context, node *nodeStatus, isSlave bool) error {
 	node.Heartbeat = time.Now()
 	statusJson, err := jsoniter.ConfigFastest.Marshal(node)
 	if err != nil {
 		return err
 	}
 	if isSlave {
-		return kvstore.SetMetadata("slave_node_"+node.Addr, statusJson)
+		return kvstore.SetMetadata(ctx, "slave_node_"+node.Addr, statusJson)
 	} else {
-		return kvstore.SetMetadata("master_node_"+node.Addr, statusJson)
+		return kvstore.SetMetadata(ctx, "master_node_"+node.Addr, statusJson)
 	}
 }
 
 // get other master candidates
-func refreshMasterNodesStatus(cluster map[string]*nodeStatus) (bool, error) {
-	iter, err := kvstore.ScanMetadata("node_", "node"+string([]byte{'_' + 1}))
+func refreshMasterNodesStatus(ctx context.Context, cluster map[string]*nodeStatus) (bool, error) {
+	iter, err := kvstore.ScanMetadata(ctx, "node_", "node"+string([]byte{'_' + 1}))
 	if err != nil {
 		return false, err
 	}

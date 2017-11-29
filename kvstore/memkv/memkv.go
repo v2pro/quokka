@@ -3,6 +3,7 @@ package memkv
 import (
 	"github.com/v2pro/quokka/kvstore"
 	"errors"
+	"context"
 )
 
 type memRow []byte
@@ -28,7 +29,7 @@ func ResetKVStore() {
 	kvstore.SetMonotonic = memSetMonotonic
 }
 
-func memGet(partition uint64, namespace string, rowKey uint64) ([]byte, error) {
+func memGet(ctx context.Context, partition uint64, namespace string, rowKey uint64) ([]byte, error) {
 	if partition < 0 || partition >= uint64(len(memPartitions)) {
 		return nil, errors.New("partition not found")
 	}
@@ -39,13 +40,16 @@ func memGet(partition uint64, namespace string, rowKey uint64) ([]byte, error) {
 	return rows[rowKey], nil
 }
 
-func memAppend(partition uint64, namespace string, rowKey uint64, rowValue []byte) error {
+func memAppend(ctx context.Context, partition uint64, namespace string, rowKey uint64, rowValue []byte) error {
 	if partition < 0 || partition >= uint64(len(memPartitions)) {
 		return errors.New("partition not found")
 	}
 	rows := memPartitions[partition]
 	if rows == nil {
 		rows = make(memPartition, 1)
+	}
+	if rowKey < uint64(len(rows)) {
+		return kvstore.KeyConflictError
 	}
 	if rowKey != uint64(len(rows)) {
 		return errors.New("row key should be +1")
@@ -55,18 +59,18 @@ func memAppend(partition uint64, namespace string, rowKey uint64, rowValue []byt
 	return nil
 }
 
-func memGetMonotonic(partition uint64, namespace string, key string) (uint64, error) {
+func memGetMonotonic(ctx context.Context, partition uint64, namespace string, key string) (uint64, error) {
 	return memMonotonics[partition][key], nil
 }
 
-func memSetMonotonic(partition uint64, namespace string, key string, value uint64) error {
+func memSetMonotonic(ctx context.Context, partition uint64, namespace string, key string, value uint64) error {
 	if value > memMonotonics[partition][key] {
 		memMonotonics[partition][key] = value
 	}
 	return nil
 }
 
-func memGetMetadata(key string) ([]byte, error) {
+func memGetMetadata(ctx context.Context, key string) ([]byte, error) {
 	for _, row := range memMetadata {
 		if row.Key == key {
 			return row.Value, nil
@@ -75,7 +79,7 @@ func memGetMetadata(key string) ([]byte, error) {
 	return nil, nil
 }
 
-func memSetMetadata(key string, value []byte) error {
+func memSetMetadata(ctx context.Context, key string, value []byte) error {
 	for _, row := range memMetadata {
 		if row.Key == key {
 			row.Value = value
@@ -89,7 +93,7 @@ func memSetMetadata(key string, value []byte) error {
 	return nil
 }
 
-func memScanMetadata(fromKey string, toKey string) (kvstore.MetadataRowIterator, error) {
+func memScanMetadata(ctx context.Context, fromKey string, toKey string) (kvstore.MetadataRowIterator, error) {
 	returned := false
 	return func() ([]kvstore.MetadataRow, error) {
 		if returned {

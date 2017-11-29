@@ -8,6 +8,7 @@ import (
 	"github.com/v2pro/quokka/kvstore"
 	"github.com/rs/xid"
 	"github.com/v2pro/quokka/kvstore/memkv"
+	"context"
 )
 
 func Test_create_object(t *testing.T) {
@@ -17,8 +18,8 @@ func Test_create_object(t *testing.T) {
 			return "hello"
 		}, nil, nil)
 	entityId := xid.New().String()
-	processor := newCommandProcessor(0)
-	resp := processor.exec(&command{
+	processor := newCommandProcessor(0, "user")
+	resp := processor.exec(context.TODO(), &command{
 		EntityType:  "user",
 		CommandType: "create",
 		EntityId:    entityId,
@@ -40,14 +41,14 @@ func Test_get_object(t *testing.T) {
 		}, nil, nil)
 
 	entityId := xid.New().String()
-	processor := newCommandProcessor(0)
-	resp := processor.exec(&command{
+	processor := newCommandProcessor(0, "user")
+	resp := processor.exec(context.TODO(), &command{
 		EntityType:  "user",
 		CommandType: "create",
 		EntityId:    entityId,
 	})
 	should.Equal(0, jsoniter.Get(resp, "errno").ToInt())
-	resp = processor.exec(&command{
+	resp = processor.exec(context.TODO(), &command{
 		EntityType:  "user",
 		CommandType: "get",
 		EntityId:    entityId,
@@ -63,7 +64,7 @@ func reset(entityType string) *entityTypeDef {
 }
 
 func debugGet(partitionId uint64, entityType string, rowKey uint64) []byte {
-	row, err := kvstore.Get(partitionId, entityType, rowKey)
+	row, err := kvstore.Get(context.TODO(), partitionId, entityType, rowKey)
 	if err != nil {
 		panic(err)
 	}

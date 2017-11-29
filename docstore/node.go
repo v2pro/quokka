@@ -11,13 +11,20 @@ import (
 	"strings"
 	"github.com/v2pro/plz/countlog"
 	"github.com/v2pro/quokka/docstore/runtime"
+	"github.com/v2pro/plz/concurrent"
+	"context"
 )
 
 // node.go is the process running endpoint
 // it will forward to other nodes, or itself (command_processor)
 // node.go will delegate the state to topo.go/cluster.go
 
-func StartNode(addr string) {
+var thisNodeAddr string
+var thisNodeStarted bool
+var thisNodeExecutor *concurrent.UnboundedExecutor
+
+func StartNode(ctx context.Context, addr string) {
+	thisNodeExecutor = concurrent.NewUnboundedExecutor()
 	var mux = &http.ServeMux{}
 	mux.HandleFunc("/docstore/ping", ping)
 	mux.HandleFunc("/docstore/exec", exec)
@@ -28,11 +35,18 @@ func StartNode(addr string) {
 		countlog.Error("event!node.failed to listen http", "addr", addr)
 		return
 	}
-	err := publishNode(addr)
+	err := publishNode(ctx, addr)
 	if err != nil {
 		countlog.Error("event!node.failed to publish", "addr", addr)
 		return
 	}
+}
+
+func StopNode() {
+	countlog.Info("event!node.stopping")
+	thisNodeExecutor.StopAndWait()
+	countlog.Info("event!node.stopped")
+	thisNodeExecutor = nil
 }
 
 func isAlive(addr string) bool {
@@ -76,15 +90,30 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 	target, isLocal := chooseCommandTarget(partitionId, &cmd, req)
 	countlog.Trace("event!node.choose command target",
 		"target", target,
-			"isLocal", isLocal,
-				"cmd", &cmd)
+		"isLocal", isLocal,
+		"cmd", &cmd)
 	if isLocal {
-		commandResp = commandProcessors[partitionId].delegatedExec(&cmd, time.Second)
+		commandProcessor := getOrCreateCommandProcessor(req.Context(), partitionId, cmd.EntityType)
+		commandResp = commandProcessor.delegatedExec(&cmd, time.Second)
 	} else {
 		commandResp = forwardCommand(target, &cmd)
 	}
 	// TODO: clear master if master hint is different from our setting
 	respWriter.Write(commandResp)
+}
+
+func getOrCreateCommandProcessor(ctx context.Context, partitionId uint64, entityType string) *commandProcessor {
+	commandProcessor := commandProcessors[partitionId][entityType]
+	if commandProcessor != nil {
+		return commandProcessor
+	}
+	processor := newCommandProcessor(partitionId, entityType)
+	processor.init(ctx)
+	thisNodeExecutor.Go(func(ctx context.Context) {
+		processor.executeInBackground(ctx)
+	})
+	thisNodeExecutor.Go(processor.lookupSyncer.syncInBackground)
+	return processor
 }
 
 func chooseCommandTarget(partitionId uint64, cmd *command, req *http.Request) (string, bool) {

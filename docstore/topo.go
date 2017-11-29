@@ -6,9 +6,10 @@ import (
 	"github.com/json-iterator/go"
 	"github.com/v2pro/plz/countlog"
 	"sync"
+	"context"
 )
 
-// node.go use topo.go to know the master/slaves of partition
+// node.go use topo.go to know the master/slaves of partitionId
 // topo.go use node.go to know the nodes and update topo to optimal state
 // node.go will trigger topo.go to update topo if nodes changed
 
@@ -34,9 +35,11 @@ func (topo topology) setPromotingMaster(partitionId uint64, master string) {
 	defer topoMutex.Unlock()
 	topo[partitionId].master = master
 	topo[partitionId].isPromoting = true
-	countlog.Info("event!topo.promoting master",
-		"partitionId", partitionId,
-		"master", master)
+	if thisNodeStarted {
+		countlog.Info("event!topo.promoting master",
+			"partitionId", partitionId,
+			"master", master)
+	}
 }
 
 func (topo topology) setPromotedMaster(partitionId uint64, master string) {
@@ -62,11 +65,11 @@ func (topo topology) clearMaster(partitionId uint64) {
 		"oldMaster", oldMaster)
 }
 
-func (topo topology) refresh(partitionId uint64) (string, error) {
+func (topo topology) refresh(ctx context.Context, partitionId uint64) (string, error) {
 	metadataKey := fmt.Sprintf("partition_%v", partitionId)
-	encodedPartition, err := kvstore.GetMetadata(metadataKey)
+	encodedPartition, err := kvstore.GetMetadata(ctx, metadataKey)
 	if err != nil {
-		countlog.Error("event!topo.failed to get partition topo from kvstore",
+		countlog.Error("event!topo.failed to get partitionId topo from kvstore",
 			"err", err,
 			"metadataKey", metadataKey,
 			"partitionId", partitionId)
@@ -85,13 +88,13 @@ func (topo topology) refresh(partitionId uint64) (string, error) {
 // rebalance is only triggered from node.go
 // given this cluster and your current topo
 // update the topo to a new optimal state
-func (topo topology) rebalance(cluster map[string]*nodeStatus) error {
+func (topo topology) rebalance(ctx context.Context, cluster map[string]*nodeStatus) error {
 	var err error
 	myMasterPartitionsCount := 0
 	for partitionId := uint64(0); partitionId < kvstore.PartitionsCount; partitionId++ {
 		master := topo.get(partitionId).master
 		if master == "" {
-			master, err = topo.refresh(partitionId)
+			master, err = topo.refresh(ctx, partitionId)
 			if err != nil {
 				return err
 			}
@@ -125,7 +128,7 @@ func chooseMaster(cluster map[string]*nodeStatus) *nodeStatus {
 	return chosen
 }
 
-func (topo topology) savePromotedMasterInBackground(partitionId uint64) {
+func (topo topology) savePromotedMasterInBackground(ctx context.Context, partitionId uint64) {
 	defer func() {
 		recovered := recover()
 		if recovered != nil {
@@ -138,18 +141,16 @@ func (topo topology) savePromotedMasterInBackground(partitionId uint64) {
 	topo.setPromotedMaster(partitionId, master)
 	encodedPartition, err := jsoniter.Marshal(map[string]string{"Master":master})
 	if err != nil {
-		countlog.Error("event!topo.failed to marshal partition topo",
+		countlog.Error("event!topo.failed to marshal partitionId topo",
 			"partitionId", partitionId, "err", err)
 		return
 	}
 	metadataKey := fmt.Sprintf("partition_%v", partitionId)
-	err = kvstore.SetMetadata(metadataKey, encodedPartition)
+	err = kvstore.SetMetadata(ctx, metadataKey, encodedPartition)
 	if err != nil {
-		countlog.Error("event!topo.failed to save partition topo",
+		countlog.Error("event!topo.failed to save partitionId topo",
 			"partitionId", partitionId, "err", err)
 		return
 	}
-	countlog.Info("event!topo.promoted master",
-		"partitionId", partitionId, "master", master)
 	// TODO: broadcast new master to the cluster
 }

@@ -5,6 +5,8 @@ import (
 	"github.com/v2pro/quokka/kvstore"
 	"time"
 	"sync"
+	"encoding/json"
+	"context"
 )
 
 var subscribers []*eventSubscriber
@@ -21,25 +23,25 @@ type eventProcessor struct {
 type eventInbox chan *Event
 
 type Event struct {
-	Partition       uint64 `json:"-"`
-	EntityType      string `json:"-"`
-	EventId         uint64 `json:"-"`
-	EntityId        string `json:"e"`
-	BaseEventId     uint64 `json:"b"`
-	Version         uint64 `json:"v"`
-	CommandId       string `json:"c"`
-	CommandType     string `json:"t"`
-	CommandRequest  []byte `json:"r"`
-	CommandResponse []byte `json:"p"`
-	State           []byte `json:"s"`
-	Delta           []byte `json:"d"`
-	CommittedAt     int64  `json:"a"`
+	Partition       uint64          `json:"-"`
+	EntityType      string          `json:"-"`
+	EventId         uint64          `json:"-"`
+	EntityId        string          `json:"e"`
+	BaseEventId     uint64          `json:"b"`
+	Version         uint64          `json:"v"`
+	CommandId       string          `json:"c"`
+	CommandType     string          `json:"t"`
+	CommandRequest  json.RawMessage `json:"r"`
+	CommandResponse json.RawMessage `json:"p"`
+	State           json.RawMessage `json:"s"`
+	Delta           json.RawMessage `json:"d"`
+	CommittedAt     int64           `json:"a"`
 }
 
 type EventHandler interface {
-	LoadOffset(partitionId uint64, entityType string) (uint64, error)
-	CommitOffset(partitionId uint64, entityType string, offset uint64) error
-	Sync(event *Event) error
+	LoadOffset(ctx context.Context, partitionId uint64, entityType string) (uint64, error)
+	CommitOffset(ctx context.Context, partitionId uint64, entityType string, offset uint64) error
+	Sync(ctx context.Context, event *Event) error
 }
 
 type eventSubscriber struct {
@@ -51,7 +53,7 @@ func (subscriber *eventSubscriber) start() {
 	subscriber.processors = make([]*eventProcessor, kvstore.PartitionsCount)
 	for i := 0; i < len(subscriber.processors); i++ {
 		subscriber.processors[i] = newEventProcessor(uint64(i), subscriber.handler)
-		go subscriber.processors[i].syncInBackground()
+		thisNodeExecutor.Go(subscriber.processors[i].syncInBackground)
 	}
 }
 
@@ -98,22 +100,20 @@ func (inbox eventInbox) clear() {
 	}
 }
 
-func (processor *eventProcessor) syncInBackground() {
-	defer func() {
-		recovered := recover()
-		if recovered != nil {
-			countlog.Fatal("event!event_processor.syncInBackground.panic", "err", recovered,
-				"stacktrace", countlog.ProvideStacktrace)
-		}
-	}()
+func (processor *eventProcessor) syncInBackground(ctx context.Context) {
 	for {
-		event := <-processor.inbox
+		var event *Event
+		select {
+		case event = <-processor.inbox:
+		case <- ctx.Done():
+			return
+		}
 		if processor.offset == 0 {
 			for {
-				offset, err := processor.handler.LoadOffset(processor.partitionId, processor.entityType)
+				offset, err := processor.handler.LoadOffset(ctx, processor.partitionId, processor.entityType)
 				if err != nil {
 					countlog.Error("event!event_processor.failed to init",
-						"partition", processor.partitionId, "err", err)
+						"partitionId", processor.partitionId, "err", err)
 					time.Sleep(time.Second * 5)
 					continue
 				}
@@ -121,11 +121,11 @@ func (processor *eventProcessor) syncInBackground() {
 				break
 			}
 		}
-		processor.syncOnce(event)
+		processor.syncOnce(ctx, event)
 	}
 }
 
-func (processor *eventProcessor) syncOnce(event *Event) {
+func (processor *eventProcessor) syncOnce(ctx context.Context, event *Event) {
 	defer func() {
 		recovered := recover()
 		if recovered != nil {
@@ -142,10 +142,10 @@ func (processor *eventProcessor) syncOnce(event *Event) {
 	var events []*Event
 	for {
 		var err error
-		events, err = scanEvents(processor.partitionId, processor.entityType, processor.offset+1, event.EventId)
+		events, err = scanEvents(ctx, processor.partitionId, processor.entityType, processor.offset+1, event.EventId)
 		if err != nil {
 			countlog.Error("event!event_processor.failed to scan events",
-				"partition", processor.partitionId,
+				"partitionId", processor.partitionId,
 				"err", err)
 			time.Sleep(time.Second * 5)
 			continue
@@ -155,10 +155,10 @@ func (processor *eventProcessor) syncOnce(event *Event) {
 	events = append(events, event)
 	for _, event := range events {
 		for {
-			err := processor.handler.Sync(event)
+			err := processor.handler.Sync(ctx, event)
 			if err != nil {
 				countlog.Error("event!event_processor.failed to sync event",
-					"partition", processor.partitionId,
+					"partitionId", processor.partitionId,
 					"event", event,
 					"err", err)
 				time.Sleep(time.Second * 5)
@@ -168,17 +168,17 @@ func (processor *eventProcessor) syncOnce(event *Event) {
 		}
 	}
 	processor.offset = event.EventId
-	err := processor.handler.CommitOffset(processor.partitionId, processor.entityType, event.EventId)
+	err := processor.handler.CommitOffset(ctx, processor.partitionId, processor.entityType, event.EventId)
 	if err != nil {
 		countlog.Warn("event!event_processor.failed to commit offset",
-			"partition", processor.partitionId,
+			"partitionId", processor.partitionId,
 			"offset", event.EventId,
 			"err", err)
 		// carry on, and hope next time will save successfully
 	}
 }
 
-func forwardEventInBackground(event *Event) {
+func forwardEventInBackground(ctx context.Context, event *Event) {
 	defer func() {
 		recovered := recover()
 		if recovered != nil {
@@ -187,6 +187,9 @@ func forwardEventInBackground(event *Event) {
 		}
 	}()
 	for _, subscriber := range subscribers {
+		if ctx.Err() != nil {
+			return
+		}
 		subscriber.enqueue(event)
 	}
 }
