@@ -4,17 +4,16 @@ import (
 	"testing"
 	"github.com/v2pro/quokka/docstore"
 	"net/http"
-	"time"
-	"strings"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"github.com/json-iterator/go"
 	"github.com/v2pro/quokka/kvstore/memkv"
 	"context"
+	"bytes"
+	"github.com/v2pro/quokka/docstore/runtime"
 )
 
-func Test_account(t *testing.T) {
-	memkv.ResetKVStore()
+func init() {
 	docstore.Entity("Account", `
 	struct Doc {
 		1: i64 amount
@@ -24,7 +23,7 @@ func Test_account(t *testing.T) {
 	function handle(doc, req) {
 		doc.amount = req.amount;
 		doc.account_type = req.account_type;
-		return null;
+		return {};
 	}
 	`, `
 	struct Request {
@@ -36,6 +35,7 @@ func Test_account(t *testing.T) {
 	`).Command("charge", `
 	function handle(doc, req) {
 		if (doc.account_type == 'vip') {
+			log_trace("event!charge", "amount", doc.amount, "charge", req.charge);
 			if (doc.amount - req.charge < -10) {
 				throw 'vip account can not below -10';
 			}
@@ -55,34 +55,43 @@ func Test_account(t *testing.T) {
 		1: i64 remaining_amount
 	}
 	`)
-	docstore.StartNode(context.TODO(), "127.0.0.1:2515")
-	time.Sleep(time.Second)
-	post(t, "http://127.0.0.1:2515/docstore/Account/create", `
-{
-	"EntityId": "123",
-	"CommandRequest": {
-		"amount": 100,
-		"account_type": "vip"
-	}
-}
-	`)
-	post(t, "http://127.0.0.1:2515/docstore/Account/charge", `
-{
-	"EntityId": "123",
-	"CommandId": "acvx",
-	"CommandRequest": {
-		"charge": 10
-	}
-}
-	`)
 }
 
-func post(t *testing.T, url string, req string) {
+func TestMain(m *testing.M) {
+	memkv.ResetKVStore()
+	docstore.StartNode(context.TODO(), "127.0.0.1:2515")
+	m.Run()
+	docstore.StopNode(context.TODO())
+}
+
+func Test_account(t *testing.T) {
+	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/Account/create",
+		"EntityId", "123", "CommandRequest", runtime.NewObject("amount", 100, "account_type", "vip"))
+	execAndExpectSuccess(t, "http://127.0.0.1:2515/docstore/Account/charge",
+		"EntityId", "123", "CommandRequest", runtime.NewObject("charge", 10))
+	execAndExpectError(t, "http://127.0.0.1:2515/docstore/Account/charge", docstore.ErrBusinessRuleViolated,
+		"EntityId", "123", "CommandRequest", runtime.NewObject("charge", 101))
+}
+
+func execAndExpectSuccess(t *testing.T, url string, kv ...interface{}) {
 	should := require.New(t)
-	resp, err := http.Post(url, "application/json", strings.NewReader(req))
+	req, err := runtime.Json.Marshal(runtime.NewObject(kv...))
+	should.Nil(err)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(req))
 	should.Nil(err)
 	body, err := ioutil.ReadAll(resp.Body)
 	should.Nil(err)
 	should.Equal("", jsoniter.Get(body, "errmsg").ToString())
 	should.Equal(0, jsoniter.Get(body, "errno").MustBeValid().ToInt())
+}
+
+func execAndExpectError(t *testing.T, url string, errorNumber int, kv ...interface{}) {
+	should := require.New(t)
+	req, err := runtime.Json.Marshal(runtime.NewObject(kv...))
+	should.Nil(err)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(req))
+	should.Nil(err)
+	body, err := ioutil.ReadAll(resp.Body)
+	should.Nil(err)
+	should.Equal(errorNumber, jsoniter.Get(body, "errno").MustBeValid().ToInt())
 }

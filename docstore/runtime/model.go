@@ -123,7 +123,7 @@ func (decoder *emptyInterfaceDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.
 	case jsoniter.NumberValue:
 		number := iter.SkipAndReturnBytes()
 		subIter := Json.BorrowIterator(number)
-		intVal := subIter.ReadInt64()
+		intVal := subIter.ReadInt()
 		if subIter.Error == io.EOF {
 			Json.ReturnIterator(subIter)
 			*(*interface{})(ptr) = intVal

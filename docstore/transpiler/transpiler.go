@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"bytes"
 	"github.com/robertkrimen/otto/file"
+	"github.com/v2pro/plz/countlog"
 )
 
 func Compile(input string) (func(doc interface{}, req interface{}) interface{}, error) {
@@ -36,6 +37,7 @@ func translate(input string) (string, error) {
 	output := []byte(`
 package main
 import "github.com/v2pro/quokka/docstore/runtime"
+import "github.com/v2pro/plz/countlog"
 import "fmt"
 
 func Fn(doc interface{}, req interface{}) (ret interface{}) {
@@ -49,11 +51,16 @@ func Fn(doc interface{}, req interface{}) (ret interface{}) {
 					ret = jsErr.Recovered
 				}
 			} else {
+				countlog.Fatal("event!runtime.panic", "err", recovered, "stacktrace", countlog.ProvideStacktrace)
 				ret = fmt.Errorf("unknown error: %v", recovered)
 			}
 		}
 	}()
 	return handle(doc, req)
+}
+
+func log_trace(event string, properties ...interface{}) {
+	runtime.Log(countlog.LevelTrace, event, properties...)
 }
 `)
 	translators := map[string]*translator{}
@@ -197,7 +204,15 @@ func (tl *translator) translateThrowStatement(stmt *ast.ThrowStatement) {
 
 func (tl *translator) translateBlockStatement(stmt *ast.BlockStatement) {
 	for _, child := range stmt.List {
-		tl.jsOffsets = append(tl.jsOffsets, int(child.Idx0()-tl.bodyStartIdx))
+		jsOffset := int(child.Idx0() - tl.bodyStartIdx)
+		if jsOffset < 0 {
+			countlog.Error("event!transpiler.failed to calculate js offset",
+				"bodyStartIdx", tl.bodyStartIdx,
+					"blockIdx0", stmt.Idx0(), "blockIdx1", stmt.Idx1(),
+					"idx0", child.Idx0(), "idx1", child.Idx1(), "type", reflect.TypeOf(child).String())
+			tl.err = errors.New("jsOffset calc failed")
+		}
+		tl.jsOffsets = append(tl.jsOffsets, jsOffset)
 		tl.goOffsets = append(tl.goOffsets, len(tl.output))
 		tl.translateStatement(child)
 		tl.output = append(tl.output, '\n')
@@ -320,8 +335,8 @@ var binaryOperators = map[string]string{
 	"/":   "Divide",
 	">":   "GT",
 	">=":  "GE",
-	"<":   "GT",
-	"<=":  "GE",
+	"<":   "LT",
+	"<=":  "LE",
 	"==":  "EQ",
 	"===": "EQ",
 }

@@ -46,6 +46,10 @@ type Thrown struct {
 	Value interface{}
 }
 
+func (thrown Thrown) ErrorNumber() int {
+	return 20002
+}
+
 func (thrown Thrown) Error() string {
 	return fmt.Sprintf("%v", thrown.Value)
 }
@@ -62,23 +66,23 @@ func ReportError(funcName string, jsSrc string, jsOffsets []int, goSrc string, g
 	targetFile, frames := listFrames()
 	if frames == nil {
 		panic(&JavascriptError{
-			funcName:    funcName,
-			Recovered:   recovered,
+			funcName:  funcName,
+			Recovered: recovered,
 		})
 	}
 	line := searchFrame(frames, targetFile, funcName)
 	if line == -1 {
 		panic(&JavascriptError{
-			funcName:    funcName,
-			Recovered:   recovered,
+			funcName:  funcName,
+			Recovered: recovered,
 		})
 	}
 	targetLine := line - absoluteLineNo - 9
 	targetGoSrc, targetStart, targetEnd := searchLine(goSrc, targetLine)
 	if targetGoSrc == "" {
 		panic(&JavascriptError{
-			funcName:    funcName,
-			Recovered:   recovered,
+			funcName:  funcName,
+			Recovered: recovered,
 		})
 	}
 	startIndex, endIndex := searchGoOffsets(goOffsets, targetStart, targetEnd)

@@ -133,14 +133,6 @@ func chooseMaster(cluster map[string]*nodeStatus) *nodeStatus {
 }
 
 func (topo topology) savePromotedMasterInBackground(ctx context.Context, partitionId uint64) {
-	defer func() {
-		recovered := recover()
-		if recovered != nil {
-			countlog.Fatal("event!topo.savePromotedMasterInBackground.panic",
-				"err", recovered,
-				"stacktrace", countlog.ProvideStacktrace)
-		}
-	}()
 	master := thisNodeAddr
 	topo.setPromotedMaster(partitionId, master)
 	encodedPartition, err := jsoniter.Marshal(map[string]string{"Master":master})

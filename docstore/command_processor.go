@@ -9,16 +9,21 @@ import (
 	"github.com/json-iterator/go"
 	"encoding/json"
 	"context"
+	"fmt"
 )
 
 const ErrUnknown = 10000
 const ErrEventLogConflict = 10001 // the master is no longer in charge, should find out who is the master
 const ErrForwardedTooManyTimes = 10002 // the master can not be found
+const ErrRequestSchemaViolated = 10003
+const ErrDocumentSchemaViolated = 10004
+const ErrResponseSchemaViolated = 10005
 
 // error number within range [LoggedErrStart, LoggedErrEnd) is committed in event_log as fact
 const LoggedErrStart = 20000
 const ErrDuplicatedEntity = LoggedErrStart // create entity with same entity id but with different command id
 const ErrEntityNotFound = 20001 // entity not created yet
+const ErrBusinessRuleViolated = 20002 // `throw` in javascript code means business rule violation
 const LoggedErrEnd = 30000
 
 type commandProcessor struct {
@@ -184,7 +189,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	var reqObj interface{}
 	var err error
 	if len(req) > 0 {
-		err = runtime.Json.Unmarshal(req, reqObj)
+		err = runtime.Json.Unmarshal(req, &reqObj)
 		if err != nil {
 			return replyError(err)
 		}
@@ -201,7 +206,8 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	}
 	err = runtime.Validate(reqObj, commandDef.requestSchema)
 	if err != nil {
-		return replyError(err)
+		err = fmt.Errorf("request violated the schema: %s", err.Error())
+		return replyError(withErrorNumber(err, ErrRequestSchemaViolated))
 	}
 	ent, respObj := processor.handle(ctx, cmd, commandDef.handler, reqObj)
 	var resp []byte
@@ -210,7 +216,8 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	} else {
 		err = runtime.Validate(respObj, commandDef.responseSchema)
 		if err != nil {
-			return replyError(err)
+			err = fmt.Errorf("response violated the schema: %s", err.Error())
+			return replyError(withErrorNumber(err, ErrResponseSchemaViolated))
 		}
 		resp, err = runtime.Json.Marshal(respObj)
 		if err != nil {

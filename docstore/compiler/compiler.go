@@ -20,12 +20,12 @@ type API interface {
 }
 
 var ConfigDefault = Config{
-	PluginCacheDir: os.Getenv("HOME") + "/.wombat",
-	SourceTempDir:  os.Getenv("HOME") + "/.wombat",
+	PluginCacheDir: os.Getenv("HOME") + "/.docstore_handler",
+	SourceTempDir:  os.Getenv("HOME") + "/.docstore_handler",
 }.Froze()
 
 func DynamicCompile(source string) (*plugin.Plugin, error) {
-	if os.Getenv("WOMBAT_DEBUG") == "true" {
+	if os.Getenv("DOCSTORE_DEBUG") == "true" {
 		fmt.Println(annotateLines(source))
 	}
 	return ConfigDefault.DynamicCompile(source)
