@@ -186,8 +186,14 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	entityType := cmd.EntityType
 	commandType := cmd.CommandType
 	commandId := cmd.CommandId
+	previousResp, err := processor.commandLookup.getCommand(ctx, partition, entityType, cmd.CommandId)
+	if err != nil {
+		return replyError(err)
+	}
+	if previousResp != nil {
+		return previousResp
+	}
 	var reqObj interface{}
-	var err error
 	if len(req) > 0 {
 		err = runtime.Json.Unmarshal(req, &reqObj)
 		if err != nil {
@@ -196,6 +202,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	} else {
 		req = json.RawMessage("{}")
 	}
+
 	store := getEntityType(entityType)
 	if store == nil {
 		return replyError(errors.New("store not defined for entity type " + entityType))

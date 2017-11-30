@@ -68,6 +68,9 @@ func newCommandLookup() *commandLookup {
 }
 
 func (lookup *commandLookup) getCommand(ctx context.Context, partitionId uint64, entityType string, commandId string) ([]byte, error) {
+	if commandId == "" {
+		return nil, nil
+	}
 	cachedVal := lookup.memLookup.getCacheValue(commandId)
 	if cachedVal != nil {
 		return cachedVal.([]byte), nil
@@ -75,6 +78,9 @@ func (lookup *commandLookup) getCommand(ctx context.Context, partitionId uint64,
 	eventId, err := lookup.kvstoreLookup.getEventId(ctx, partitionId, entityType, commandId, lookup.memLookup.cache2StartVersion)
 	if err != nil {
 		return nil, err
+	}
+	if eventId == 0 {
+		return nil, nil
 	}
 	return getCommandResponse(ctx, partitionId, entityType, eventId)
 }
@@ -143,7 +149,7 @@ func (lookup *kvstoreLookup) getEventId(ctx context.Context, partitionId uint64,
 }
 
 func (lookup *kvstoreLookup) getOffset(ctx context.Context, partitionId uint64, entityType string) (uint64, error) {
-	return kvstore.GetMonotonic(ctx, partitionId, entityType, lookup.prefix+"offset")
+	return kvstore.GetMonotonic(ctx, partitionId, entityType, "offset")
 }
 
 func (lookup *kvstoreLookup) setEventId(ctx context.Context, partitionId uint64, entityType string, key string, eventId uint64) error {
