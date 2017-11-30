@@ -115,6 +115,10 @@ func exec(respWriter http.ResponseWriter, req *http.Request) {
 		"target", master,
 		"isLocal", isLocal,
 		"cmd", &cmd)
+	if master == "" {
+		respWriter.Write(replyError(errors.New("master is not available for this partition")))
+		return
+	}
 	if isLocal {
 		commandProcessor, err := getOrCreateCommandProcessor(req.Context(), partitionId, cmd.EntityType)
 		if err != nil {

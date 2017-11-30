@@ -121,12 +121,14 @@ func (processor *commandProcessor) replayEvent(ctx context.Context, event *Event
 		processor.entityLookup.cacheEntity(event.EntityId, entity, event.EventId)
 		return nil
 	}
-	err = runtime.DeltaJson.Unmarshal(event.Delta, entity.doc)
-	if err != nil {
-		countlog.Error("event!command_processor.failed to apply delta",
-			"err", err,
-			"state", event.State)
-		return err
+	if entity.doc != nil {
+		err = runtime.DeltaJson.Unmarshal(event.Delta, entity.doc)
+		if err != nil {
+			countlog.Error("event!command_processor.failed to apply delta",
+				"err", err,
+				"state", event.State)
+			return err
+		}
 	}
 	entity.eventId = event.EventId
 	entity.version++

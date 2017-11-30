@@ -60,6 +60,9 @@ func (topo topology) clearMaster(partitionId uint64) {
 	oldMaster := topo[partitionId].master
 	topo[partitionId].master = ""
 	topo[partitionId].isPromoting = false
+	commandProcessorsMutexs[partitionId].Lock()
+	commandProcessors[partitionId] = nil
+	commandProcessorsMutexs[partitionId].Unlock()
 	countlog.Info("event!topo.clear master",
 		"partitionId", partitionId,
 		"oldMaster", oldMaster)
