@@ -75,10 +75,10 @@ func Test_command_before_create(t *testing.T) {
 			return nil
 		}, nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:9879")
-	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrEntityNotFound,
+	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrMustCreateFirst,
 		"EntityId", "123")
 	event1 := debugGet(kvstore.HashToPartition("123"), "user", 1)
-	should.Equal(ErrEntityNotFound, jsoniter.Get(event1, "p", "errno").ToInt())
+	should.Equal(ErrMustCreateFirst, jsoniter.Get(event1, "p", "errno").ToInt())
 }
 
 func Test_key_conflict_lost_master(t *testing.T) {
@@ -90,7 +90,7 @@ func Test_key_conflict_lost_master(t *testing.T) {
 			return nil
 		}, nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:9879")
-	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrEntityNotFound,
+	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrMustCreateFirst,
 		"EntityId", "123")
 	event, _ := eventJson.Marshal(&Event{
 		EntityId:        "123",

@@ -6,7 +6,7 @@ import (
 	"context"
 )
 
-var entityNotFoundError = withErrorNumber(errors.New("entity not found"), ErrEntityNotFound)
+var entityNotFoundError = withErrorNumber(errors.New("entity not found"), ErrMustCreateFirst)
 
 type entityLookup struct {
 	memLookup     *memLookup

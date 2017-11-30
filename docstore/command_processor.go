@@ -18,12 +18,13 @@ const ErrForwardedTooManyTimes = 10002 // the master can not be found
 const ErrRequestSchemaViolated = 10003
 const ErrDocumentSchemaViolated = 10004
 const ErrResponseSchemaViolated = 10005
+const ErrEntityMissing = 10006 // query can not find the entity
 
 // error number within range [LoggedErrStart, LoggedErrEnd) is committed in event_log as fact
 const LoggedErrStart = 20000
 const ErrDuplicatedEntity = LoggedErrStart // create entity with same entity id but with different command id
-const ErrEntityNotFound = 20001 // entity not created yet
-const ErrBusinessRuleViolated = 20002 // `throw` in javascript code means business rule violation
+const ErrMustCreateFirst = 20001           // entity not created yet, so can not exec other command
+const ErrBusinessRuleViolated = 20002      // `throw` in javascript code means business rule violation
 const LoggedErrEnd = 30000
 
 type commandProcessor struct {
