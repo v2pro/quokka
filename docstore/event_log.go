@@ -81,6 +81,9 @@ func loadEntity(ctx context.Context, partitionId uint64, entityType string, enti
 			entity.doc = nil
 			return nil
 		}
+		if event.BaseEventId == entity.eventId {
+			break
+		}
 		encodedEvent, err = kvstore.Get(ctx, partitionId, entityType, event.BaseEventId)
 		if err != nil {
 			return err
@@ -92,7 +95,7 @@ func loadEntity(ctx context.Context, partitionId uint64, entityType string, enti
 			return err
 		}
 	}
-	var doc interface{}
+	doc := entity.doc
 	if err = runtime.Json.Unmarshal(event.State, &doc); err != nil {
 		return err
 	}

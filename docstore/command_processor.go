@@ -48,16 +48,6 @@ type command struct {
 	respChan       chan []byte
 }
 
-type entityCache struct {
-	startVersion uint64 // the cache covers modification since this event id
-	entities     map[string]*entity
-}
-
-type commandCache struct {
-	startVersion uint64
-	responses    map[string][]byte
-}
-
 func init() {
 	for partitionId := uint64(0); partitionId < kvstore.PartitionsCount; partitionId++ {
 		commandProcessors[partitionId] = map[string]*commandProcessor{}
@@ -295,8 +285,10 @@ func (processor *commandProcessor) handle(ctx context.Context, cmd *command, han
 	entityId := cmd.EntityId
 	entityType := cmd.EntityType
 	commandType := cmd.CommandType
-	entity := newEntity()
-	err := processor.entityLookup.getEntity(ctx, partition, entityType, entityId, entity)
+	entity, err := processor.entityLookup.getEntity(ctx, partition, entityType, entityId)
+	if entity == nil {
+		entity = newEntity()
+	}
 	if commandType == "create" {
 		if err != nil && err != entityNotFoundError {
 			return entity, err

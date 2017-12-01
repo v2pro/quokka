@@ -27,23 +27,22 @@ func newEntityLookup() *entityLookup {
 }
 
 func (lookup *entityLookup) getEntity(ctx context.Context, partitionId uint64, entityType string,
-	entityId string, /* in and out */ entity *entity) error {
+	entityId string) (*entity, error) {
 
 	cachedVal := castToEntity(lookup.memLookup.getCacheValue(entityId))
 	if cachedVal != nil {
-		entity.doc = cachedVal.doc
-		entity.eventId = cachedVal.eventId
-		entity.version = cachedVal.version
-		return nil
+		return cachedVal, nil
 	}
 	eventId, err := lookup.kvstoreLookup.getEventId(ctx, partitionId, entityType, entityId, lookup.memLookup.cache2StartVersion)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if eventId == 0 {
-		return entityNotFoundError
+		return nil, entityNotFoundError
 	}
-	return loadEntity(ctx, partitionId, entityType, entityId, eventId, entity)
+	entity := newEntity()
+	err = loadEntity(ctx, partitionId, entityType, entityId, eventId, entity)
+	return entity, err
 }
 
 func (lookup *entityLookup) cacheEntity(entityId string, value *entity, version uint64) {
@@ -139,12 +138,14 @@ type kvstoreLookup struct {
 }
 
 func (lookup *kvstoreLookup) getEventId(ctx context.Context, partitionId uint64, entityType string, key string, minVersion uint64) (uint64, error) {
-	offset, err := lookup.getOffset(ctx, partitionId, entityType)
-	if err != nil {
-		return 0, err
-	}
-	if offset < minVersion {
-		return 0, errors.New("lookup is too old")
+	if minVersion > 0 {
+		offset, err := lookup.getOffset(ctx, partitionId, entityType)
+		if err != nil {
+			return 0, err
+		}
+		if offset < minVersion {
+			return 0, errors.New("lookup is too old")
+		}
 	}
 	value, err := kvstore.GetMonotonic(ctx, partitionId, entityType, lookup.prefix+key)
 	if err != nil {

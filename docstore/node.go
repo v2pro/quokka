@@ -37,9 +37,10 @@ var thisNodeExecutor *concurrent.UnboundedExecutor
 
 func StartNode(ctx context.Context, addr string) {
 	thisNodeExecutor = concurrent.NewUnboundedExecutor()
+	entityCache := newEntityCache()
 	var mux = &http.ServeMux{}
 	mux.HandleFunc("/docstore/ping", ping)
-	mux.HandleFunc("/docstore/entities/", queryEntity)
+	mux.HandleFunc("/docstore/entities/", entityCache.queryEntity)
 	mux.HandleFunc("/docstore/exec", exec)
 	mux.HandleFunc("/docstore/", exec)
 	// will promote servers to master if needed
@@ -90,6 +91,13 @@ func ping(respWriter http.ResponseWriter, req *http.Request) {
 }
 
 func exec(respWriter http.ResponseWriter, req *http.Request) {
+	defer func() {
+		recovered := recover()
+		if recovered != nil {
+			countlog.Fatal("event!exec.panic", "err", recovered,
+				"stacktrace", countlog.ProvideStacktrace)
+		}
+	}()
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		respWriter.Write(replyError(err))
