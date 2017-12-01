@@ -3,22 +3,10 @@ package example
 import (
 	"testing"
 	"github.com/v2pro/quokka/docstore"
-	"net/http"
 	"github.com/stretchr/testify/require"
-	"io/ioutil"
 	"github.com/json-iterator/go"
-	"github.com/v2pro/quokka/kvstore/memkv"
-	"context"
-	"bytes"
 	"github.com/v2pro/quokka/docstore/runtime"
 )
-
-func TestMain(m *testing.M) {
-	memkv.ResetKVStore()
-	docstore.StartNode(context.TODO(), "127.0.0.1:9865")
-	m.Run()
-	docstore.StopNode(context.TODO())
-}
 
 func defineAccount() {
 	docstore.Entity("Account", `
@@ -82,29 +70,4 @@ func Test_charge_idempotence(t *testing.T) {
 	resp = execAndExpectSuccess(t, "/Account/charge",
 		"EntityId", "123", "CommandId", "xcvf", "CommandRequest", runtime.NewObject("charge", 10))
 	should.Equal(90, jsoniter.Get(resp, "data", "remaining_amount").ToInt())
-}
-
-func execAndExpectSuccess(t *testing.T, url string, kv ...interface{}) []byte {
-	should := require.New(t)
-	req, err := runtime.Json.Marshal(runtime.NewObject(kv...))
-	should.Nil(err)
-	resp, err := http.Post("http://127.0.0.1:9865/docstore" + url, "application/json", bytes.NewBuffer(req))
-	should.Nil(err)
-	body, err := ioutil.ReadAll(resp.Body)
-	should.Nil(err)
-	should.Equal("", jsoniter.Get(body, "errmsg").ToString())
-	should.Equal(0, jsoniter.Get(body, "errno").MustBeValid().ToInt())
-	return body
-}
-
-func execAndExpectError(t *testing.T, url string, errorNumber int, kv ...interface{}) []byte {
-	should := require.New(t)
-	req, err := runtime.Json.Marshal(runtime.NewObject(kv...))
-	should.Nil(err)
-	resp, err := http.Post("http://127.0.0.1:9865/docstore" + url, "application/json", bytes.NewBuffer(req))
-	should.Nil(err)
-	body, err := ioutil.ReadAll(resp.Body)
-	should.Nil(err)
-	should.Equal(errorNumber, jsoniter.Get(body, "errno").MustBeValid().ToInt())
-	return body
 }

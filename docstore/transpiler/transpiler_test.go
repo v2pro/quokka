@@ -69,6 +69,25 @@ func Test_compile(t *testing.T) {
 	return {"length": doc.val.length};
 	`, runtime.NewObject("val", runtime.NewList("hello")),
 	runtime.NewObject("length", 1)},
+		{"Object.keys()", `
+	doc['val'] = 'hello';
+	return {"length": Object.keys(doc).length};
+	`, runtime.NewObject("val", "hello"), runtime.NewObject("length", 1)},
+		{"Date.now()", `
+	Date.mocked_now = 1024;
+	doc['now'] = Date.now();
+	return null;
+	`, runtime.NewObject("now", 1024), nil},
+		{"Math.random()", `
+	Math.mocked_random = 0.1;
+	doc['random'] = Math.random();
+	return null;
+	`, runtime.NewObject("random", 0.1), nil},
+		{"var", `
+	var value = "hello";
+	doc['value'] = value;
+	return null;
+	`, runtime.NewObject("value", "hello"), nil},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.title, func(t *testing.T) {
@@ -99,7 +118,8 @@ func Test_sub_function(t *testing.T) {
 	`)
 	should.Nil(err)
 	obj := runtime.NewObject()
-	fn(obj, nil)
+	resp := fn(obj, nil)
+	should.Nil(resp)
 	should.Equal("world", runtime.Get(obj, "hello"))
 }
 

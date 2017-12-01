@@ -40,6 +40,10 @@ import "github.com/v2pro/quokka/docstore/runtime"
 import "github.com/v2pro/plz/countlog"
 import "fmt"
 
+var Object = runtime.ObjectClass
+var Date = runtime.DateClass
+var Math = runtime.MathClass
+
 func Fn(doc interface{}, req interface{}) (ret interface{}) {
 	defer func() {
 		recovered := recover()
@@ -56,7 +60,7 @@ func Fn(doc interface{}, req interface{}) (ret interface{}) {
 			}
 		}
 	}()
-	return handle(doc, req)
+	return handle([]interface{}{doc, req})
 }
 
 func log_trace(event string, properties ...interface{}) {
@@ -105,7 +109,6 @@ type translator struct {
 	goOffsets      []int
 	goSrc          []byte
 	err            error
-	hasReturnValue bool
 	bodyStartIdx   file.Idx
 }
 
@@ -127,23 +130,12 @@ func (tl *translator) translate(funcName string, paramNames []string, absoluteLi
 	tl.goSrc = tl.output
 	tl.output = []byte(`func `)
 	tl.output = append(tl.output, funcName...)
-	tl.output = append(tl.output, '(')
-	for i, paramName := range paramNames {
-		if i > 0 {
-			tl.output = append(tl.output, ", "...)
-		}
-		tl.output = append(tl.output, paramName...)
-		tl.output = append(tl.output, " interface{}"...)
-	}
-	tl.output = append(tl.output, ") "...)
-	if tl.hasReturnValue {
-		tl.output = append(tl.output, "interface{} "...)
-	}
-	tl.output = append(tl.output, `{
-		defer func() {
-			recovered := recover()
-			if recovered != nil {
-				runtime.ReportError("`...)
+	tl.output = append(tl.output, `(args []interface{}) interface{} {`...)
+	tl.output = append(tl.output, `
+	defer func() {
+		recovered := recover()
+		if recovered != nil {
+			runtime.ReportError("`...)
 	tl.output = append(tl.output, funcName...)
 	tl.output = append(tl.output, `", `...)
 	tl.output = append(tl.output, funcName...)
@@ -169,8 +161,18 @@ func (tl *translator) translate(funcName string, paramNames []string, absoluteLi
 		}
 	}()
 `...)
+	for i, paramName := range paramNames {
+		tl.output = append(tl.output, paramName...)
+		tl.output = append(tl.output, " := args["...)
+		tl.output = append(tl.output, strconv.Itoa(i)...)
+		tl.output = append(tl.output, `]
+		runtime.BlackHole(`...)
+		tl.output = append(tl.output, paramName...)
+		tl.output = append(tl.output, ")\n"...)
+
+	}
 	tl.output = append(tl.output, tl.goSrc...)
-	tl.output = append(tl.output, "}\n"...)
+	tl.output = append(tl.output, "\nreturn nil\n}\n"...)
 }
 
 func (tl *translator) translateStatement(stmt ast.Statement) {
@@ -180,13 +182,13 @@ func (tl *translator) translateStatement(stmt ast.Statement) {
 	case *ast.ExpressionStatement:
 		tl.translateExpression(typedStmt.Expression)
 	case *ast.ReturnStatement:
-		tl.hasReturnValue = true
 		tl.translateReturnStatement(typedStmt)
 	case *ast.ThrowStatement:
-		tl.hasReturnValue = true
 		tl.translateThrowStatement(typedStmt)
 	case *ast.IfStatement:
 		tl.translateIfStatement(typedStmt)
+	case *ast.VariableStatement:
+		tl.translateVariableStatement(typedStmt)
 	default:
 		tl.reportError(stmt, "can not handle "+reflect.TypeOf(stmt).String())
 	}
@@ -245,6 +247,8 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.translateBinaryExpression(typedExpr.Operator.String(), typedExpr.Left, typedExpr.Right)
 	case *ast.UnaryExpression:
 		tl.translateUnaryExpression(typedExpr)
+	case *ast.VariableExpression:
+		tl.translateVariableExpression(typedExpr)
 	default:
 		tl.reportError(typedExpr, "can not handle "+reflect.TypeOf(typedExpr).String())
 	}
@@ -293,6 +297,14 @@ func (tl *translator) translateAssignExpression(expr *ast.AssignExpression) {
 			tl.translateBinaryExpression(operator, leftExpr, expr.Right)
 		}
 		tl.output = append(tl.output, ')')
+	case *ast.Identifier:
+		tl.output = append(tl.output, leftExpr.Name...)
+		tl.output = append(tl.output, '=')
+		if operator == "=" {
+			tl.translateExpression(expr.Right)
+		} else {
+			tl.translateBinaryExpression(operator, leftExpr, expr.Right)
+		}
 	default:
 		tl.reportError(expr.Left, "can not handle "+reflect.TypeOf(expr.Left).String())
 	}
@@ -391,4 +403,17 @@ func (tl *translator) translateIfStatement(stmt *ast.IfStatement) {
 	tl.output = append(tl.output, ")) {\n"...)
 	tl.translateStatement(stmt.Consequent)
 	tl.output = append(tl.output, "}\n"...)
+}
+
+func (tl *translator) translateVariableStatement(stmt *ast.VariableStatement) {
+	for _, expr := range stmt.List{
+		tl.translateExpression(expr)
+		tl.output = append(tl.output, '\n')
+	}
+}
+
+func (tl *translator) translateVariableExpression(expr *ast.VariableExpression) {
+	tl.output = append(tl.output, expr.Name...)
+	tl.output = append(tl.output, ":="...)
+	tl.translateExpression(expr.Initializer)
 }

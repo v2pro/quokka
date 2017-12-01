@@ -6,18 +6,19 @@ import (
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
+	"github.com/v2pro/go-linux-amd64-bootstrap/src/fmt"
 )
 
 func init() {
 	docstore.Entity("Hongbao", `
 	struct taken {
 		1: i64 taken_at
-		2: float64 taken_amount
+		2: i64 taken_amount // unit fen
 	}
 	struct Doc {
 		1: i64 total_count
-		2: float64 total_amount
-		3: float64 remaining_amount
+		2: i64 total_amount // unit fen
+		3: i64 remaining_amount // unit fen
 		4: map<string, taken> takens
 	}
 	`).Command("create", `
@@ -36,6 +37,9 @@ func init() {
 	}
 	`).Command("take", `
 	function handle(doc, req) {
+		if (doc.takens[req.username]) {
+			throw 'one user can not take twice'
+		}
 		var takens_count = Object.keys(doc.takens).length;
 		if (takens_count == doc.total_count) {
 			throw 'nothing left'
@@ -60,7 +64,7 @@ func init() {
 		if (remaining_amount < cap_amount) {
 			cap_amount = remaining_amount;
 		}
-		return randBetween(0.01, cap_amount);
+		return Math.floor(randBetween(1, cap_amount));
 	}
 	function randBetween(min, max) {
 		return Math.random() * (max - min) + min;
@@ -77,21 +81,23 @@ func init() {
 func Test_take_hongbao(t *testing.T) {
 	should := require.New(t)
 	execAndExpectSuccess(t, "/Hongbao/create",
-		"EntityId", "123", "CommandRequest", runtime.NewObject("amount", 131.4, "count", 3))
+		"EntityId", "123", "CommandRequest", runtime.NewObject("amount", 1314, "count", 3))
 	resp := execAndExpectSuccess(t, "/Hongbao/take",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "tom"))
-	taken1 := jsoniter.Get(resp, "data", "taken_amount").ToFloat64()
+	taken1 := jsoniter.Get(resp, "data", "taken_amount").ToInt()
 	resp = execAndExpectError(t, "/Hongbao/take", docstore.ErrBusinessRuleViolated,
 		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "tom"))
 	should.Equal("one user can not take twice", jsoniter.Get(resp, "errmsg").ToString())
 	resp = execAndExpectSuccess(t, "/Hongbao/take",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "jerry"))
-	taken2 := jsoniter.Get(resp, "data", "taken_amount").ToFloat64()
+	taken2 := jsoniter.Get(resp, "data", "taken_amount").ToInt()
 	resp = execAndExpectSuccess(t, "/Hongbao/take",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "donald"))
-	taken3 := jsoniter.Get(resp, "data", "taken_amount").ToFloat64()
-	should.Equal(131.4, taken1 + taken2 + taken3)
+	taken3 := jsoniter.Get(resp, "data", "taken_amount").ToInt()
+	should.Equal(1314, taken1+taken2+taken3)
 	resp = execAndExpectError(t, "/Hongbao/take", docstore.ErrBusinessRuleViolated,
 		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "lily"))
 	should.Equal("nothing left", jsoniter.Get(resp, "errmsg").ToString())
+	resp = queryAndExpectSuccess(t, "/entities/Hongbao/123")
+	fmt.Println(string(resp))
 }

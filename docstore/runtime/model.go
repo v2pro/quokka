@@ -46,11 +46,23 @@ type DObject struct {
 }
 
 func AsBool(val interface{}) bool {
-	return val.(bool)
+	if val == nil {
+		return false
+	}
+	switch typedVal := val.(type) {
+	case bool:
+		return typedVal
+	default:
+		return true
+	}
 }
 
 func AsObj(val interface{}) Object {
 	return val.(Object)
+}
+
+// supress variable not used error
+func BlackHole(obj interface{}) {
 }
 
 func Call(callee interface{}, args ...interface{}) interface{} {
