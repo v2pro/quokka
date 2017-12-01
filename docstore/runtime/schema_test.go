@@ -97,3 +97,22 @@ func Test_validate_list_of_object(t *testing.T) {
 		obj.Set("takens", NewList(1))
 	})
 }
+
+func Test_validate_map(t *testing.T) {
+	should := require.New(t)
+	schemas, err := ThriftSchemas(`
+	struct Request {
+		1: map<string, string> words;
+	}
+	`)
+	should.Nil(err)
+	obj := NewObject()
+	obj.Schema = schemas["Request"]
+	obj.Set("words", NewObject("hello", "world"))
+	should.Panics(func() {
+		obj.Set("words", 1)
+	})
+	should.Panics(func() {
+		obj.Set("words", NewList(1))
+	})
+}

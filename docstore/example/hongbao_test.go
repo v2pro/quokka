@@ -11,21 +11,21 @@ import (
 func init() {
 	docstore.Entity("Hongbao", `
 	struct taken {
-		1: string taken_by
+		1: i64 taken_at
 		2: float64 taken_amount
 	}
 	struct Doc {
 		1: i64 total_count
 		2: float64 total_amount
 		3: float64 remaining_amount
-		4: list<taken> takens
+		4: map<string, taken> takens
 	}
 	`).Command("create", `
 	function handle(doc, req) {
 		doc.total_count = req.count;
 		doc.total_amount = req.amount;
 		doc.remaining_amount = req.amount;
-		doc.takens = [];
+		doc.takens = {};
 		return {};
 	}`, `
 	struct Request {
@@ -36,14 +36,34 @@ func init() {
 	}
 	`).Command("take", `
 	function handle(doc, req) {
-		if (doc.takens.length == doc.total_count) {
+		var takens_count = Object.keys(doc.takens).length;
+		if (takens_count == doc.total_count) {
 			throw 'nothing left'
 		}
-		doc.takens.push({
-			taken_by: req.username,
-			taken_amount: 1,
-		});
-		return {taken_amount: 1};
+		if (takens_count == doc.total_count - 1) {
+			// last one, take all
+			var taken_amount = doc.remaining_amount;
+			doc.remaining_amount = 0;
+			doc.takens[req.username] = {taken_at: Date.now(), taken_amount: taken_amount};
+			return {taken_amount: taken_amount};
+		}
+		var taken_amount = calcRandomAmount(doc.remaining_amount, doc.total_amount, doc.total_count);
+		doc.remaining_amount -= taken_amount;
+		doc.takens[req.username] = {
+			taken_at: Date.now(),
+			taken_amount: taken_amount
+		};
+		return {taken_amount: taken_amount};
+	}
+	function calcRandomAmount(remaining_amount, total_amount, total_count) {
+		var cap_amount = 2 * total_amount / total_count;
+		if (remaining_amount < cap_amount) {
+			cap_amount = remaining_amount;
+		}
+		return randBetween(0.01, cap_amount);
+	}
+	function randBetween(min, max) {
+		return Math.random() * (max - min) + min;
 	}`, `
 	struct Request {
 		1: string username

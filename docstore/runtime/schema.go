@@ -95,6 +95,9 @@ func (obj *DObject) validateKey(key string, value interface{}) {
 	}
 	fieldSchema := obj.Schema.Fields[key]
 	if fieldSchema == nil {
+		fieldSchema = obj.Schema.Element
+	}
+	if fieldSchema == nil {
 		return
 	}
 	err := Validate(value, fieldSchema)
@@ -168,7 +171,10 @@ func ThriftSchemas(thriftIDL string) (map[string]*Schema, error) {
 }
 
 func getFieldTypeNode(node antlr.Tree) interface{} {
-	if _, ok := node.(*thrift.ListTypeContext); ok {
+	switch node.(type) {
+	case *thrift.ListTypeContext:
+		return node.GetPayload()
+	case *thrift.MapTypeContext:
 		return node.GetPayload()
 	}
 	if node.GetChild(0) == nil {
@@ -197,6 +203,12 @@ func fieldTypeToSchema(schemas map[string]*Schema, fieldTypeNode interface{}) (*
 				return nil, err
 			}
 			return &Schema{Element: elem}, nil
+		case "map":
+			elem, err := fieldTypeToSchema(schemas, getFieldTypeNode(typedNode.GetChild(4)))
+			if err != nil {
+				return nil, err
+			}
+			return &Schema{Fields: map[string]*Schema{}, Element: elem}, nil
 		default:
 			return nil, fmt.Errorf("does not support container type: %s", containerType)
 		}
