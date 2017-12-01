@@ -15,18 +15,18 @@ struct taken {
 	1: i64 taken_at
 	2: i64 taken_amount // unit fen
 }
-struct Doc {
+struct Entity {
 	1: i64 total_count
 	2: i64 total_amount // unit fen
 	3: i64 remaining_amount // unit fen
 	4: map<string, taken> takens
 }
 `).Command("create", `
-function handle(doc, req) {
-	doc.total_count = req.count;
-	doc.total_amount = req.amount;
-	doc.remaining_amount = req.amount;
-	doc.takens = {};
+function handle(entity, req) {
+	entity.total_count = req.count;
+	entity.total_amount = req.amount;
+	entity.remaining_amount = req.amount;
+	entity.takens = {};
 	return {};
 }`, `
 struct Request {
@@ -36,24 +36,24 @@ struct Request {
 struct Response {
 }
 `).Command("take", `
-function handle(doc, req) {
-	if (doc.takens[req.username]) {
+function handle(entity, req) {
+	if (entity.takens[req.username]) {
 		throw 'one user can not take twice'
 	}
-	var takens_count = Object.keys(doc.takens).length;
-	if (takens_count == doc.total_count) {
+	var takens_count = Object.keys(entity.takens).length;
+	if (takens_count == entity.total_count) {
 		throw 'nothing left'
 	}
-	if (takens_count == doc.total_count - 1) {
+	if (takens_count == entity.total_count - 1) {
 		// last one, take all
-		var taken_amount = doc.remaining_amount;
-		doc.remaining_amount = 0;
-		doc.takens[req.username] = {taken_at: Date.now(), taken_amount: taken_amount};
+		var taken_amount = entity.remaining_amount;
+		entity.remaining_amount = 0;
+		entity.takens[req.username] = {taken_at: Date.now(), taken_amount: taken_amount};
 		return {taken_amount: taken_amount};
 	}
-	var taken_amount = calcRandomAmount(doc.remaining_amount, doc.total_amount, doc.total_count);
-	doc.remaining_amount -= taken_amount;
-	doc.takens[req.username] = {
+	var taken_amount = calcRandomAmount(entity.remaining_amount, entity.total_amount, entity.total_count);
+	entity.remaining_amount -= taken_amount;
+	entity.takens[req.username] = {
 		taken_at: Date.now(),
 		taken_amount: taken_amount
 	};

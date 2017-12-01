@@ -61,9 +61,9 @@ func (typ *entityTypeDef) getCommandDef(commandType string) *commandDef {
 func Entity(entityType string, thriftIDL string) *entityTypeDef {
 	schemas, err := runtime.ThriftSchemas(thriftIDL)
 	if err != nil {
-		panic(fmt.Sprintf("%s Doc schema invalid: %s", entityType, err.Error()))
+		panic(fmt.Sprintf("%s entity schema invalid: %s", entityType, err.Error()))
 	}
-	return AddEntity(entityType, schemas["Doc"])
+	return AddEntity(entityType, schemas["Entity"])
 }
 
 func AddEntity(entityType string, schema *runtime.Schema) *entityTypeDef {

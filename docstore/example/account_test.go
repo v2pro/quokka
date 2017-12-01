@@ -10,14 +10,14 @@ import (
 
 func defineAccount() {
 	docstore.Entity("Account", `
-	struct Doc {
+	struct Entity {
 		1: i64 amount
 		2: string account_type
 	}
 	`).Command("create", `
-	function handle(doc, req) {
-		doc.amount = req.amount;
-		doc.account_type = req.account_type;
+	function handle(entity, req) {
+		entity.amount = req.amount;
+		entity.account_type = req.account_type;
 		return {};
 	}`, `
 	struct Request {
@@ -27,18 +27,18 @@ func defineAccount() {
 	struct Response {
 	}
 	`).Command("charge", `
-	function handle(doc, req) {
-		if (doc.account_type == 'vip') {
-			if (doc.amount - req.charge < -10) {
+	function handle(entity, req) {
+		if (entity.account_type == 'vip') {
+			if (entity.amount - req.charge < -10) {
 				throw 'vip account can not below -10';
 			}
 		} else {
-			if (doc.amount - req.charge < 0) {
+			if (entity.amount - req.charge < 0) {
 				throw 'normal account can not below 0';
 			}
 		}
-		doc.amount -= req.charge;
-		return {remaining_amount: doc.amount};
+		entity.amount -= req.charge;
+		return {remaining_amount: entity.amount};
 	}`, `
 	struct Request {
 		1: i64 charge

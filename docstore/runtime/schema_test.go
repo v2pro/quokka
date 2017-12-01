@@ -83,12 +83,12 @@ func Test_validate_list_of_object(t *testing.T) {
 	struct taken {
 		1: string taken_by
 	}
-	struct Doc {
+	struct Entity {
 		1: list<taken> takens
 	}`)
 	should.Nil(err)
 	obj := NewObject()
-	obj.Schema = schemas["Doc"]
+	obj.Schema = schemas["Entity"]
 	obj.Set("takens", NewList(NewObject("taken_by", "taowen")))
 	should.Panics(func() {
 		obj.Set("takens", 1)
