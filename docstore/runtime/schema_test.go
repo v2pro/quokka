@@ -13,11 +13,15 @@ func Test_thrift(t *testing.T) {
 	}
 	struct Response {
 		2: required string hello;
+		3: i64 i64_field;
+		4: float64 float64_field;
 	}
 	`)
 	should.Nil(err)
 	obj := NewObject()
 	obj.Schema = schemas["Response"]
+	obj.Set("i64_field", 100)
+	obj.Set("float64_field", 20.0)
 	should.Panics(func() {
 		obj.Set("hello", 1)
 	})
@@ -69,5 +73,27 @@ func Test_validate_list(t *testing.T) {
 	})
 	should.Panics(func() {
 		obj.Set("words", NewList(1))
+	})
+}
+
+
+func Test_validate_list_of_object(t *testing.T) {
+	should := require.New(t)
+	schemas, err := ThriftSchemas(`
+	struct taken {
+		1: string taken_by
+	}
+	struct Doc {
+		1: list<taken> takens
+	}`)
+	should.Nil(err)
+	obj := NewObject()
+	obj.Schema = schemas["Doc"]
+	obj.Set("takens", NewList(NewObject("taken_by", "taowen")))
+	should.Panics(func() {
+		obj.Set("takens", 1)
+	})
+	should.Panics(func() {
+		obj.Set("takens", NewList(1))
 	})
 }

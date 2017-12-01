@@ -5,6 +5,7 @@ import (
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/v2pro/quokka/docstore/transpiler"
 	"github.com/v2pro/plz/countlog"
+	"github.com/v2pro/go-linux-amd64-bootstrap/src/fmt"
 )
 
 var entityTypes = map[string]*entityTypeDef{}
@@ -31,7 +32,10 @@ func (typ *entityTypeDef) Command(commandType string, jsHandler string, thriftID
 			"err", err, "jsHandler", jsHandler)
 		return typ
 	}
-	schemas := runtime.ThriftSchemas(thriftIDL)
+	schemas, err := runtime.ThriftSchemas(thriftIDL)
+	if err != nil {
+		panic(err)
+	}
 	typ.AddCommand(commandType, handler, schemas["Request"], schemas["Response"])
 	return typ
 }
@@ -55,7 +59,11 @@ func (typ *entityTypeDef) getCommandDef(commandType string) *commandDef {
 }
 
 func Entity(entityType string, thriftIDL string) *entityTypeDef {
-	return AddEntity(entityType, runtime.ThriftSchemas(thriftIDL)["Doc"])
+	schemas, err := runtime.ThriftSchemas(thriftIDL)
+	if err != nil {
+		panic(fmt.Sprintf("%s Doc schema invalid: %s", entityType, err.Error()))
+	}
+	return AddEntity(entityType, schemas["Doc"])
 }
 
 func AddEntity(entityType string, schema *runtime.Schema) *entityTypeDef {

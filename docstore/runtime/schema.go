@@ -6,7 +6,14 @@ import (
 	"github.com/v2pro/quokka/docstore/thrift"
 	"github.com/antlr/antlr4/runtime/Go/antlr"
 	"fmt"
+	"github.com/v2pro/plz/countlog"
 )
+
+var thriftTypes = map[string]*Schema{
+	"string": mustBeString,
+	"i64": mustBeInteger,
+	"float64": mustBeNumber,
+}
 
 type Schema struct {
 	Fields    map[string]*Schema
@@ -106,6 +113,25 @@ var mustBeString = &Schema{
 	},
 }
 
+var intType = reflect.TypeOf((*int)(nil)).Elem()
+var float64Type = reflect.TypeOf((*float64)(nil)).Elem()
+var mustBeInteger = &Schema{
+	Validator: func(value interface{}) error {
+		if reflect.TypeOf(value) != intType {
+			return errors.New("must be int")
+		}
+		return nil
+	},
+}
+var mustBeNumber = &Schema{
+	Validator: func(value interface{}) error {
+		if reflect.TypeOf(value) != intType && reflect.TypeOf(value) != float64Type {
+			return errors.New("must be number")
+		}
+		return nil
+	},
+}
+
 func ThriftSchemas(thriftIDL string) (map[string]*Schema, error) {
 	charStream := antlr.NewInputStream(thriftIDL)
 	lexer := thrift.NewAntlrThriftLexer(charStream)
@@ -129,32 +155,44 @@ func ThriftSchemas(thriftIDL string) (map[string]*Schema, error) {
 				idx = 2
 			}
 			fieldName := field.GetChild(idx + 1).GetPayload().(*antlr.CommonToken).GetText()
-			fieldTypeNode := field.GetChild(idx).GetChild(0).GetChild(0).GetPayload()
-			fieldType, err := fieldTypeToSchema(fieldTypeNode)
+			fieldTypeNode := getFieldTypeNode(field.GetChild(idx))
+			fieldTypeSchema, err := fieldTypeToSchema(schemas, fieldTypeNode)
 			if err != nil {
 				return nil, err
 			}
-			schema.Fields[fieldName] = fieldType
+			schema.Fields[fieldName] = fieldTypeSchema
 		}
 		schemas[structName] = schema
 	}
 	return schemas, nil
 }
 
-var thriftTypes = map[string]*Schema{
-	"string": mustBeString,
+func getFieldTypeNode(node antlr.Tree) interface{} {
+	if _, ok := node.(*thrift.ListTypeContext); ok {
+		return node.GetPayload()
+	}
+	if node.GetChild(0) == nil {
+		return node.GetPayload()
+	}
+	return getFieldTypeNode(node.GetChild(0))
 }
 
-func fieldTypeToSchema(fieldTypeNode interface{}) (*Schema, error) {
-	fieldType := ""
+func fieldTypeToSchema(schemas map[string]*Schema, fieldTypeNode interface{}) (*Schema, error) {
 	switch typedNode := fieldTypeNode.(type) {
 	case *antlr.CommonToken:
-		fieldType = typedNode.GetText()
+		typeSchema := thriftTypes[typedNode.GetText()]
+		if typeSchema == nil {
+			typeSchema = schemas[typedNode.GetText()]
+		}
+		if typeSchema == nil {
+			countlog.Warn("event!schema.no schema defined for type", "type", typedNode.GetText())
+		}
+		return typeSchema, nil
 	case *antlr.BaseParserRuleContext:
 		containerType := typedNode.GetChild(0).GetPayload().(*antlr.CommonToken).GetText()
 		switch containerType {
 		case "list":
-			elem, err := fieldTypeToSchema(typedNode.GetChild(2).GetChild(0).GetChild(0).GetPayload())
+			elem, err := fieldTypeToSchema(schemas, getFieldTypeNode(typedNode.GetChild(2)))
 			if err != nil {
 				return nil, err
 			}
@@ -162,9 +200,7 @@ func fieldTypeToSchema(fieldTypeNode interface{}) (*Schema, error) {
 		default:
 			return nil, fmt.Errorf("does not support container type: %s", containerType)
 		}
-		fieldType = typedNode.GetText()
 	default:
 		return nil, fmt.Errorf("unexpected node type: %s", reflect.TypeOf(typedNode).String())
 	}
-	return thriftTypes[fieldType], nil
 }
