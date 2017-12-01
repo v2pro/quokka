@@ -16,11 +16,6 @@ func init() {
 	DeltaJson.RegisterExtension(&deltaJsonExtension{})
 }
 
-type Object interface {
-	Set(key interface{}, value interface{})
-	Get(key interface{}) interface{}
-}
-
 func (obj *DObject) Set(keyObj interface{}, value interface{}) {
 	key := keyObj.(string)
 	obj.validateKey(key, value)
@@ -29,10 +24,6 @@ func (obj *DObject) Set(keyObj interface{}, value interface{}) {
 		obj.updated = map[string]interface{}{}
 	}
 	obj.updated[key] = value
-}
-
-func (obj *DObject) Get(key interface{}) interface{} {
-	return obj.data[key.(string)]
 }
 
 func (obj *DObject) isDirty() bool {

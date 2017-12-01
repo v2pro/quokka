@@ -251,17 +251,17 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 }
 
 func (tl *translator) translateDotExpression(expr *ast.DotExpression) {
-	tl.output = append(tl.output, `runtime.GetProperty(`...)
+	tl.output = append(tl.output, `runtime.AsObj(`...)
 	tl.translateExpression(expr.Left)
-	tl.output = append(tl.output, `, "`...)
+	tl.output = append(tl.output, `).Get("`...)
 	tl.output = append(tl.output, expr.Identifier.Name...)
 	tl.output = append(tl.output, `")`...)
 }
 
 func (tl *translator) translateBracketExpression(expr *ast.BracketExpression) {
-	tl.output = append(tl.output, `runtime.GetProperty(`...)
+	tl.output = append(tl.output, `runtime.AsObj(`...)
 	tl.translateExpression(expr.Left)
-	tl.output = append(tl.output, ", "...)
+	tl.output = append(tl.output, ").Get("...)
 	tl.translateExpression(expr.Member)
 	tl.output = append(tl.output, ')')
 }
@@ -330,12 +330,10 @@ func (tl *translator) translateArrayLiteral(expr *ast.ArrayLiteral) {
 }
 
 func (tl *translator) translateCallExpression(expr *ast.CallExpression) {
+	tl.output = append(tl.output, "runtime.Call("...)
 	tl.translateExpression(expr.Callee)
-	tl.output = append(tl.output, '(')
-	for i, arg := range expr.ArgumentList {
-		if i > 0 {
-			tl.output = append(tl.output, ", "...)
-		}
+	for _, arg := range expr.ArgumentList {
+		tl.output = append(tl.output, ", "...)
 		tl.translateExpression(arg)
 	}
 	tl.output = append(tl.output, ')')

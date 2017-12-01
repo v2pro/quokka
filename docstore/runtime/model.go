@@ -53,6 +53,10 @@ func AsObj(val interface{}) Object {
 	return val.(Object)
 }
 
+func Call(callee interface{}, args ...interface{}) interface{} {
+	return callee.(func([]interface{}) interface{})(args)
+}
+
 func NewObject(kv ...interface{}) *DObject {
 	data := map[string]interface{}{}
 	for i := 0; i < len(kv); i += 2 {
@@ -65,7 +69,7 @@ func NewObject(kv ...interface{}) *DObject {
 
 type DList struct {
 	Schema *Schema `json:"-"`
-	data []interface{}
+	data   []interface{}
 }
 
 func NewList(data ...interface{}) *DList {
@@ -84,16 +88,34 @@ func Get(obj interface{}, path ...interface{}) interface{} {
 	return obj
 }
 
-func GetProperty(obj interface{}, keyObj interface{}) interface{} {
-	key := keyObj.(string)
-	if key == "length" {
-		dlist, _ := obj.(*DList)
-		if dlist != nil {
-			return len(dlist.data)
-		}
-	}
-	return obj.(*DObject).data[key]
+
+type Object interface {
+	Set(key interface{}, value interface{})
+	Get(key interface{}) interface{}
 }
+
+func (obj *DList) Set(keyObj interface{}, value interface{}) {
+	panic("list can not be set by property")
+}
+
+func (obj *DList) Get(key interface{}) interface{} {
+	switch key {
+	case "length":
+		return len(obj.data)
+	case "push":
+		return func(args []interface{}) interface{} {
+			obj.data = append(obj.data, args[0])
+			return len(obj.data)
+		}
+	default:
+		panic(fmt.Sprintf("list does not have property: %v", key))
+	}
+}
+
+func (obj *DObject) Get(key interface{}) interface{} {
+	return obj.data[key.(string)]
+}
+
 
 type jsonExtension struct {
 	jsoniter.DummyExtension
