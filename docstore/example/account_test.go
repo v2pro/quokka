@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 	docstore.StopNode(context.TODO())
 }
 
-func init() {
+func defineAccount() {
 	docstore.Entity("Account", `
 	struct Doc {
 		1: i64 amount
@@ -62,22 +62,24 @@ func init() {
 }
 
 func Test_account_minimum_amount_rule(t *testing.T) {
-	execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Account/create",
+	defineAccount()
+	execAndExpectSuccess(t, "/Account/create",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("amount", 100, "account_type", "vip"))
-	execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Account/charge",
+	execAndExpectSuccess(t, "/Account/charge",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("charge", 10))
-	execAndExpectError(t, "http://127.0.0.1:9865/docstore/Account/charge", docstore.ErrBusinessRuleViolated,
+	execAndExpectError(t, "/Account/charge", docstore.ErrBusinessRuleViolated,
 		"EntityId", "123", "CommandRequest", runtime.NewObject("charge", 101))
 }
 
 func Test_charge_idempotence(t *testing.T) {
+	defineAccount()
 	should := require.New(t)
-	execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Account/create",
+	execAndExpectSuccess(t, "/Account/create",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("amount", 100, "account_type", "vip"))
-	resp := execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Account/charge",
+	resp := execAndExpectSuccess(t, "/Account/charge",
 		"EntityId", "123", "CommandId", "xcvf", "CommandRequest", runtime.NewObject("charge", 10))
 	should.Equal(90, jsoniter.Get(resp, "data", "remaining_amount").ToInt())
-	resp = execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Account/charge",
+	resp = execAndExpectSuccess(t, "/Account/charge",
 		"EntityId", "123", "CommandId", "xcvf", "CommandRequest", runtime.NewObject("charge", 10))
 	should.Equal(90, jsoniter.Get(resp, "data", "remaining_amount").ToInt())
 }
@@ -86,7 +88,7 @@ func execAndExpectSuccess(t *testing.T, url string, kv ...interface{}) []byte {
 	should := require.New(t)
 	req, err := runtime.Json.Marshal(runtime.NewObject(kv...))
 	should.Nil(err)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(req))
+	resp, err := http.Post("http://127.0.0.1:9865/docstore" + url, "application/json", bytes.NewBuffer(req))
 	should.Nil(err)
 	body, err := ioutil.ReadAll(resp.Body)
 	should.Nil(err)
@@ -95,13 +97,14 @@ func execAndExpectSuccess(t *testing.T, url string, kv ...interface{}) []byte {
 	return body
 }
 
-func execAndExpectError(t *testing.T, url string, errorNumber int, kv ...interface{}) {
+func execAndExpectError(t *testing.T, url string, errorNumber int, kv ...interface{}) []byte {
 	should := require.New(t)
 	req, err := runtime.Json.Marshal(runtime.NewObject(kv...))
 	should.Nil(err)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(req))
+	resp, err := http.Post("http://127.0.0.1:9865/docstore" + url, "application/json", bytes.NewBuffer(req))
 	should.Nil(err)
 	body, err := ioutil.ReadAll(resp.Body)
 	should.Nil(err)
 	should.Equal(errorNumber, jsoniter.Get(body, "errno").MustBeValid().ToInt())
+	return body
 }

@@ -4,6 +4,8 @@ import (
 	"github.com/v2pro/quokka/docstore"
 	"testing"
 	"github.com/v2pro/quokka/docstore/runtime"
+	"github.com/json-iterator/go"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -37,7 +39,11 @@ func init() {
 		if (doc.takens.length == doc.total_count) {
 			throw 'nothing left'
 		}
-		return {};
+		doc.takens.push({
+			taken_by: req.username,
+			taken_amount: 1,
+		});
+		return {taken_amount: 1};
 	}`, `
 	struct Request {
 		1: string username
@@ -49,8 +55,23 @@ func init() {
 }
 
 func Test_take_hongbao(t *testing.T) {
-	execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Hongbao/create",
+	should := require.New(t)
+	execAndExpectSuccess(t, "/Hongbao/create",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("amount", 131.4, "count", 3))
-	execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Hongbao/take",
+	resp := execAndExpectSuccess(t, "/Hongbao/take",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "tom"))
+	taken1 := jsoniter.Get(resp, "data", "taken_amount").ToFloat64()
+	resp = execAndExpectError(t, "/Hongbao/take", docstore.ErrBusinessRuleViolated,
+		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "tom"))
+	should.Equal("one user can not take twice", jsoniter.Get(resp, "errmsg").ToString())
+	resp = execAndExpectSuccess(t, "/Hongbao/take",
+		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "jerry"))
+	taken2 := jsoniter.Get(resp, "data", "taken_amount").ToFloat64()
+	resp = execAndExpectSuccess(t, "/Hongbao/take",
+		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "donald"))
+	taken3 := jsoniter.Get(resp, "data", "taken_amount").ToFloat64()
+	should.Equal(131.4, taken1 + taken2 + taken3)
+	resp = execAndExpectError(t, "/Hongbao/take", docstore.ErrBusinessRuleViolated,
+		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "lily"))
+	should.Equal("nothing left", jsoniter.Get(resp, "errmsg").ToString())
 }
