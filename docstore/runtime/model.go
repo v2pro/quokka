@@ -52,7 +52,14 @@ func AsBool(val interface{}) bool {
 	switch typedVal := val.(type) {
 	case bool:
 		return typedVal
+	case string:
+		return typedVal != ""
+	case int:
+		return typedVal != 0
+	case float64:
+		return typedVal != 0
 	default:
+		// empty [] or {} is considered as true
 		return true
 	}
 }
