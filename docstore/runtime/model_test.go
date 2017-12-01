@@ -21,9 +21,9 @@ func Test_array(t *testing.T) {
 	var obj interface{}
 	encoded := `[1,2,3]`
 	should.Nil(Json.UnmarshalFromString(encoded, &obj))
-	should.Equal(int64(1), obj.(*DArray).data[0])
-	should.Equal(int64(2), obj.(*DArray).data[1])
-	should.Equal(int64(3), obj.(*DArray).data[2])
+	should.Equal(int64(1), obj.(*DList).data[0])
+	should.Equal(int64(2), obj.(*DList).data[1])
+	should.Equal(int64(3), obj.(*DList).data[2])
 	reEncoded, err := Json.MarshalToString(obj)
 	should.Nil(err)
 	should.Equal(encoded, reEncoded)

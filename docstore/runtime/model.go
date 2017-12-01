@@ -12,7 +12,7 @@ import (
 // float64
 // string
 // bool
-// *DArray
+// *DList
 // *DObject
 
 var Json = jsoniter.Config{
@@ -30,7 +30,7 @@ var DebugJson = jsoniter.Config{
 
 var emptyInterfaceType = reflect.TypeOf((*interface{})(nil)).Elem()
 var dobjectType = reflect.TypeOf((*DObject)(nil)).Elem()
-var darrayType = reflect.TypeOf((*DArray)(nil)).Elem()
+var darrayType = reflect.TypeOf((*DList)(nil)).Elem()
 
 func init() {
 	Json.RegisterExtension(&jsonExtension{})
@@ -63,15 +63,20 @@ func NewObject(kv ...interface{}) *DObject {
 	}
 }
 
-type DArray struct {
+type DList struct {
+	Schema *Schema `json:"-"`
 	data []interface{}
+}
+
+func NewList(data ...interface{}) *DList {
+	return &DList{data: data}
 }
 
 func Get(obj interface{}, path ...interface{}) interface{} {
 	for _, elem := range path {
 		switch typedElem := elem.(type) {
 		case int:
-			obj = obj.(*DArray).data[typedElem]
+			obj = obj.(*DList).data[typedElem]
 		case string:
 			obj = obj.(*DObject).data[typedElem]
 		}
@@ -110,7 +115,7 @@ func (decoder *emptyInterfaceDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.
 		iter.ReadVal(&obj.data)
 		*(*interface{})(ptr) = obj
 	case jsoniter.ArrayValue:
-		arr := &DArray{}
+		arr := &DList{}
 		iter.ReadVal(&arr.data)
 		*(*interface{})(ptr) = arr
 	case jsoniter.StringValue:
@@ -169,7 +174,7 @@ func (encoder *arrayEncoder) EncodeInterface(val interface{}, stream *jsoniter.S
 }
 
 func (encoder *arrayEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
-	obj := (*DArray)(ptr)
+	obj := (*DList)(ptr)
 	stream.WriteVal(obj.data)
 }
 

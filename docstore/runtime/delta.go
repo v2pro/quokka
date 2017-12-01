@@ -4,7 +4,6 @@ import (
 	"github.com/json-iterator/go"
 	"reflect"
 	"unsafe"
-	"fmt"
 )
 
 var DeltaJson = jsoniter.Config{
@@ -30,39 +29,6 @@ func (obj *DObject) Set(keyObj interface{}, value interface{}) {
 		obj.updated = map[string]interface{}{}
 	}
 	obj.updated[key] = value
-}
-
-func (obj *DObject) validateKey(key string, value interface{}) {
-	defer func() {
-		recovered := recover()
-		if recovered != nil {
-			panic(fmt.Errorf("%s->%v", key, recovered))
-		}
-	}()
-	if obj.Schema == nil {
-		return
-	}
-	schema := obj.Schema.Fields[key]
-	if schema == nil {
-		return
-	}
-	if schema.Validator != nil {
-		err := schema.Validator(value)
-		if err != nil {
-			panic(err)
-		}
-	}
-	if schema.Fields != nil {
-		obj := value.(*DObject)
-		obj.Schema = schema
-		obj.validate()
-	}
-}
-
-func (obj *DObject) validate() {
-	for key, value := range obj.data {
-		obj.validateKey(key, value)
-	}
 }
 
 func (obj *DObject) Get(key interface{}) interface{} {
