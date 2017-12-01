@@ -120,7 +120,8 @@ func (processor *commandProcessor) replayEvent(ctx context.Context, event *Event
 	var err error
 	entity, _ := processor.entityLookup.memLookup.getCacheValue(event.EntityId).(*entity)
 	if entity == nil {
-		entity, err = loadEntity(ctx, processor.partitionId, processor.entityType, event.EntityId, event.EventId)
+		entity = newEntity()
+		err = loadEntity(ctx, processor.partitionId, processor.entityType, event.EntityId, event.EventId, entity)
 		if err != nil {
 			return err
 		}
@@ -217,7 +218,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 		err = fmt.Errorf("request violated the schema: %s", err.Error())
 		return replyError(withErrorNumber(err, ErrRequestSchemaViolated))
 	}
-	ent, respObj := processor.handle(ctx, cmd, commandDef.handler, reqObj)
+	entity, respObj := processor.handle(ctx, cmd, commandDef.handler, reqObj)
 	var resp []byte
 	if err, _ := respObj.(error); err != nil {
 		resp = replyError(err)
@@ -237,21 +238,21 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 		PartitionId:     partition,
 		EntityType:      entityType,
 		EventId:         processor.lastEventId + 1,
-		BaseEventId:     ent.eventId,
+		BaseEventId:     entity.eventId,
 		EntityId:        entityId,
-		Version:         ent.version + 1,
+		Version:         entity.version + 1,
 		CommandId:       commandId,
 		CommandType:     commandType,
 		CommandRequest:  req,
 		CommandResponse: resp,
 		CommittedAt:     time.Now().UnixNano(),
 	}
-	if ent.version%16 == 0 {
-		event.State, err = runtime.Json.Marshal(ent.doc)
+	if entity.version%16 == 0 {
+		event.State, err = runtime.Json.Marshal(entity.doc)
 	} else {
 		event.State = []byte("null")
 	}
-	event.Delta, err = runtime.DeltaJson.Marshal(ent.doc)
+	event.Delta, err = runtime.DeltaJson.Marshal(entity.doc)
 	if err != nil {
 		return replyError(err)
 	}
@@ -273,9 +274,9 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 		"encodedEvent", encodedEvent)
 	processor.lastEventId = event.EventId
 	// update in memory lookup
-	ent.eventId = event.EventId
-	ent.version = event.Version
-	processor.entityLookup.cacheEntity(event.EntityId, ent, event.EventId)
+	entity.eventId = event.EventId
+	entity.version = event.Version
+	processor.entityLookup.cacheEntity(event.EntityId, entity, event.EventId)
 	processor.commandLookup.cacheCommand(event.CommandId, resp, event.EventId)
 	// up kv store lookup in separate goroutine
 	processor.lookupSyncer.enqueue(event)
@@ -294,27 +295,20 @@ func (processor *commandProcessor) handle(ctx context.Context, cmd *command, han
 	entityId := cmd.EntityId
 	entityType := cmd.EntityType
 	commandType := cmd.CommandType
-	ent, err := processor.entityLookup.getEntity(ctx, partition, entityType, entityId)
-	// when entityNotFoundError, the entity is nil
-	// when no error, the entity doc should be nil, as no previous command created the state
-	if ent == nil {
-		ent = &entity{
-			eventId: 0,
-			version: 0,
-		}
-	}
+	entity := newEntity()
+	err := processor.entityLookup.getEntity(ctx, partition, entityType, entityId, entity)
 	if commandType == "create" {
 		if err != nil && err != entityNotFoundError {
-			return ent, err
+			return entity, err
 		}
-		if ent.doc != nil {
-			return ent, withErrorNumber(errors.New("duplicated entity"), ErrDuplicatedEntity)
+		if entity.doc != nil {
+			return entity, withErrorNumber(errors.New("duplicated entity"), ErrDuplicatedEntity)
 		}
-		ent.doc = runtime.NewObject()
+		entity.doc = runtime.NewObject()
 	} else if err != nil {
-		return ent, err
+		return entity, err
 	}
-	return ent, handler(ent.doc, reqObj)
+	return entity, handler(entity.doc, reqObj)
 }
 
 func (processor *commandProcessor) LoadOffset(ctx context.Context, partitionId uint64, entityType string) (uint64, error) {

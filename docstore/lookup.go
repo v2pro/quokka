@@ -26,19 +26,24 @@ func newEntityLookup() *entityLookup {
 	}
 }
 
-func (lookup *entityLookup) getEntity(ctx context.Context, partitionId uint64, entityType string, entityId string) (*entity, error) {
-	cachedVal := lookup.memLookup.getCacheValue(entityId)
+func (lookup *entityLookup) getEntity(ctx context.Context, partitionId uint64, entityType string,
+	entityId string, /* in and out */ entity *entity) error {
+
+	cachedVal := castToEntity(lookup.memLookup.getCacheValue(entityId))
 	if cachedVal != nil {
-		return cachedVal.(*entity), nil
+		entity.doc = cachedVal.doc
+		entity.eventId = cachedVal.eventId
+		entity.version = cachedVal.version
+		return nil
 	}
 	eventId, err := lookup.kvstoreLookup.getEventId(ctx, partitionId, entityType, entityId, lookup.memLookup.cache2StartVersion)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if eventId == 0 {
-		return nil, entityNotFoundError
+		return entityNotFoundError
 	}
-	return loadEntity(ctx, partitionId, entityType, entityId, eventId)
+	return loadEntity(ctx, partitionId, entityType, entityId, eventId, entity)
 }
 
 func (lookup *entityLookup) cacheEntity(entityId string, value *entity, version uint64) {

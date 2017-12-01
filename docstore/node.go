@@ -39,6 +39,7 @@ func StartNode(ctx context.Context, addr string) {
 	thisNodeExecutor = concurrent.NewUnboundedExecutor()
 	var mux = &http.ServeMux{}
 	mux.HandleFunc("/docstore/ping", ping)
+	mux.HandleFunc("/docstore/entities/", queryEntity)
 	mux.HandleFunc("/docstore/exec", exec)
 	mux.HandleFunc("/docstore/", exec)
 	// will promote servers to master if needed

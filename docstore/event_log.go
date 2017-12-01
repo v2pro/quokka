@@ -24,6 +24,15 @@ type entity struct {
 	doc     interface{}
 }
 
+func newEntity() *entity {
+	return &entity{}
+}
+
+func castToEntity(obj interface{}) *entity {
+	e, _ := obj.(*entity)
+	return e
+}
+
 type eventForLoadEntity struct {
 	BaseEventId uint64          `json:"b"`
 	Version     uint64          `json:"v"`
@@ -35,7 +44,9 @@ type eventForGetCommandResponse struct {
 	CommandResponse json.RawMessage `json:"p"`
 }
 
-func loadEntity(ctx context.Context, partitionId uint64, entityType string, entityId string, eventId uint64) (*entity, error) {
+func loadEntity(ctx context.Context, partitionId uint64, entityType string, entityId string,
+	eventId uint64, /* in and out */ entity *entity) error {
+
 	encodedEvent, err := kvstore.Get(ctx, partitionId, entityType, eventId)
 	if err != nil {
 		countlog.Trace("event!event_log.event not found",
@@ -44,7 +55,7 @@ func loadEntity(ctx context.Context, partitionId uint64, entityType string, enti
 			"entityId", entityId,
 			"partitionId", partitionId,
 			"eventId", eventId)
-		return nil, err
+		return err
 	}
 	var event eventForLoadEntity
 	if err = eventJson.Unmarshal(encodedEvent, &event); err != nil {
@@ -53,7 +64,7 @@ func loadEntity(ctx context.Context, partitionId uint64, entityType string, enti
 			"partitionId", partitionId,
 			"eventId", eventId,
 			"encodedEvent", encodedEvent)
-		return nil, err
+		return err
 	}
 	version := event.Version
 	baseEventId := eventId
@@ -65,40 +76,37 @@ func loadEntity(ctx context.Context, partitionId uint64, entityType string, enti
 				"partitionId", partitionId,
 				"baseEventId", baseEventId,
 				"deltas", deltas)
-			return &entity{
-				eventId: baseEventId,
-				version: version,
-				doc:     nil,
-			}, nil
+			entity.eventId = baseEventId
+			entity.version = version
+			entity.doc = nil
+			return nil
 		}
 		encodedEvent, err = kvstore.Get(ctx, partitionId, entityType, event.BaseEventId)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		event.BaseEventId = 0
 		event.State = nil
 		event.Delta = nil
 		if err = eventJson.Unmarshal(encodedEvent, &event); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	var doc interface{}
 	if err = runtime.Json.Unmarshal(event.State, &doc); err != nil {
-		return nil, err
+		return err
 	}
 	// apply delta backwards
 	for i := len(deltas) - 1; i >= 0; i-- {
 		delta := deltas[i]
 		if err = runtime.DeltaJson.Unmarshal(delta, &doc); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	entity := &entity{
-		eventId: baseEventId,
-		version: version,
-		doc:     doc,
-	}
-	return entity, nil
+	entity.eventId = baseEventId
+	entity.version = version
+	entity.doc = doc
+	return nil
 }
 
 // scanEvents return events in range [from, to)
