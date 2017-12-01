@@ -233,6 +233,8 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 		tl.translateDotExpression(typedExpr)
 	case *ast.ObjectLiteral:
 		tl.translateObjectLiteral(typedExpr)
+	case *ast.ArrayLiteral:
+		tl.translateArrayLiteral(typedExpr)
 	case *ast.NumberLiteral:
 		tl.output = append(tl.output, fmt.Sprintf("%v", typedExpr.Value)...)
 	case *ast.NullLiteral:
@@ -249,17 +251,17 @@ func (tl *translator) translateExpression(expr ast.Expression) {
 }
 
 func (tl *translator) translateDotExpression(expr *ast.DotExpression) {
-	tl.output = append(tl.output, `runtime.AsObj(`...)
+	tl.output = append(tl.output, `runtime.GetProperty(`...)
 	tl.translateExpression(expr.Left)
-	tl.output = append(tl.output, `).Get("`...)
+	tl.output = append(tl.output, `, "`...)
 	tl.output = append(tl.output, expr.Identifier.Name...)
 	tl.output = append(tl.output, `")`...)
 }
 
 func (tl *translator) translateBracketExpression(expr *ast.BracketExpression) {
-	tl.output = append(tl.output, `runtime.AsObj(`...)
+	tl.output = append(tl.output, `runtime.GetProperty(`...)
 	tl.translateExpression(expr.Left)
-	tl.output = append(tl.output, ").Get("...)
+	tl.output = append(tl.output, ", "...)
 	tl.translateExpression(expr.Member)
 	tl.output = append(tl.output, ')')
 }
@@ -312,6 +314,17 @@ func (tl *translator) translateObjectLiteral(expr *ast.ObjectLiteral) {
 		tl.output = append(tl.output, prop.Key...)
 		tl.output = append(tl.output, `", `...)
 		tl.translateExpression(prop.Value)
+	}
+	tl.output = append(tl.output, ')')
+}
+
+func (tl *translator) translateArrayLiteral(expr *ast.ArrayLiteral) {
+	tl.output = append(tl.output, `runtime.NewList(`...)
+	for i, prop := range expr.Value {
+		if i > 0 {
+			tl.output = append(tl.output, ", "...)
+		}
+		tl.translateExpression(prop)
 	}
 	tl.output = append(tl.output, ')')
 }

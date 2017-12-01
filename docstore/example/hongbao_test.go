@@ -23,6 +23,7 @@ func init() {
 		doc.total_count = req.count;
 		doc.total_amount = req.amount;
 		doc.remaining_amount = req.amount;
+		doc.takens = [];
 		return {};
 	}`, `
 	struct Request {
@@ -31,10 +32,25 @@ func init() {
 	}
 	struct Response {
 	}
+	`).Command("take", `
+	function handle(doc, req) {
+		if (doc.takens.length == doc.total_count) {
+			throw 'nothing left'
+		}
+		return {};
+	}`, `
+	struct Request {
+		1: string username
+	}
+	struct Response {
+		1: float64 taken_amount
+	}
 	`)
 }
 
 func Test_take_hongbao(t *testing.T) {
 	execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Hongbao/create",
 		"EntityId", "123", "CommandRequest", runtime.NewObject("amount", 131.4, "count", 3))
+	execAndExpectSuccess(t, "http://127.0.0.1:9865/docstore/Hongbao/take",
+		"EntityId", "123", "CommandRequest", runtime.NewObject("username", "tom"))
 }

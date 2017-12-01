@@ -58,6 +58,11 @@ func Test_compile(t *testing.T) {
 	}
 	return null;
 	`, runtime.NewObject("val", "world"), nil},
+		{"list length", `
+	doc['val'] = ["hello"];
+	return {"length": doc.val.length};
+	`, runtime.NewObject("val", runtime.NewList("hello")),
+	runtime.NewObject("length", 1)},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.title, func(t *testing.T) {
@@ -67,6 +72,9 @@ func Test_compile(t *testing.T) {
 			doc := runtime.NewObject()
 			resp := fn(doc, nil)
 			should.Equal(runtime.Dump(fixture.expectedDoc), runtime.Dump(doc))
+			if err, _ := resp.(error); err != nil {
+				should.Nil(err, err.Error())
+			}
 			should.Equal(runtime.Dump(fixture.expectedResp), runtime.Dump(resp))
 		})
 	}

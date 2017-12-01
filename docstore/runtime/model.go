@@ -84,6 +84,17 @@ func Get(obj interface{}, path ...interface{}) interface{} {
 	return obj
 }
 
+func GetProperty(obj interface{}, keyObj interface{}) interface{} {
+	key := keyObj.(string)
+	if key == "length" {
+		dlist, _ := obj.(*DList)
+		if dlist != nil {
+			return len(dlist.data)
+		}
+	}
+	return obj.(*DObject).data[key]
+}
+
 type jsonExtension struct {
 	jsoniter.DummyExtension
 }
