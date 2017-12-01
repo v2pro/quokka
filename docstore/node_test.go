@@ -26,7 +26,7 @@ func Test_first_event(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil)
+		}, "", nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:9879")
 	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/create", "EntityId", "123")
 }
@@ -36,7 +36,7 @@ func Test_duplicated_entity(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil)
+		}, "",nil, nil)
 	ctx := context.TODO()
 	StartNode(ctx, "127.0.0.1:9879")
 	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/create", "EntityId", "123")
@@ -53,10 +53,10 @@ func Test_append_more_event_log_after_restart(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil).AddCommand("noop",
+		}, "",nil, nil).AddCommand("noop",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil)
+		}, "",nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:9879")
 	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/create", "EntityId", "123")
 	StopNode(context.TODO())
@@ -70,10 +70,10 @@ func Test_command_before_create(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil).AddCommand("noop",
+		}, "",nil, nil).AddCommand("noop",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil)
+		}, "",nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:9879")
 	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrMustCreateFirst,
 		"EntityId", "123")
@@ -85,10 +85,10 @@ func Test_key_conflict_lost_master(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil).AddCommand("noop",
+		}, "",nil, nil).AddCommand("noop",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil)
+		}, "",nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:9879")
 	execAndExpectError(t, "http://127.0.0.1:9879/docstore/user/noop", ErrMustCreateFirst,
 		"EntityId", "123")

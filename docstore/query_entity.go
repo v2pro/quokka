@@ -7,7 +7,7 @@ import (
 	"github.com/v2pro/plz/countlog"
 	"github.com/hashicorp/golang-lru"
 	"github.com/v2pro/quokka/docstore/runtime"
-	"github.com/v2pro/go-linux-amd64-bootstrap/src/errors"
+	"errors"
 )
 
 type entityCache struct {

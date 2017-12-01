@@ -195,11 +195,11 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 		req = json.RawMessage("{}")
 	}
 
-	store := getEntityType(entityType)
-	if store == nil {
-		return replyError(errors.New("store not defined for entity type " + entityType))
+	entityTypeDef := getEntityType(entityType)
+	if entityTypeDef == nil {
+		return replyError(errors.New("entityTypeDef not defined for entity type " + entityType))
 	}
-	commandDef := store.getCommandDef(commandType)
+	commandDef := entityTypeDef.getCommandDef(commandType)
 	if commandDef == nil {
 		return replyError(errors.New("handler not defined for command type " + commandType))
 	}
@@ -234,6 +234,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 		CommandId:       commandId,
 		CommandType:     commandType,
 		CommandRequest:  req,
+		HandlerVersion:  commandDef.handlerVersion,
 		CommandResponse: resp,
 		CommittedAt:     time.Now().UnixNano(),
 	}
@@ -268,7 +269,7 @@ func (processor *commandProcessor) exec(ctx context.Context, cmd *command) []byt
 	entity.version = event.Version
 	processor.entityLookup.cacheEntity(event.EntityId, entity, event.EventId)
 	processor.commandLookup.cacheCommand(event.CommandId, resp, event.EventId)
-	// up kv store lookup in separate goroutine
+	// up kv entityTypeDef lookup in separate goroutine
 	processor.lookupSyncer.enqueue(event)
 	if cmd.IsPromoting {
 		thisNodeExecutor.Go(func(ctx context.Context) {

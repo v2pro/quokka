@@ -5,7 +5,9 @@ import (
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/v2pro/quokka/docstore/transpiler"
 	"github.com/v2pro/plz/countlog"
-	"github.com/v2pro/go-linux-amd64-bootstrap/src/fmt"
+	"fmt"
+	"encoding/base64"
+	"crypto/md5"
 )
 
 var entityTypes = map[string]*entityTypeDef{}
@@ -16,6 +18,7 @@ type CommandHandler func(doc interface{}, request interface{}) (resp interface{}
 type commandDef struct {
 	requestSchema  *runtime.Schema
 	responseSchema *runtime.Schema
+	handlerVersion string
 	handler        CommandHandler
 }
 
@@ -36,11 +39,17 @@ func (typ *entityTypeDef) Command(commandType string, jsHandler string, thriftID
 	if err != nil {
 		panic(err)
 	}
-	typ.AddCommand(commandType, handler, schemas["Request"], schemas["Response"])
+	typ.AddCommand(commandType, handler, calcJsHandlerVersion(jsHandler), schemas["Request"], schemas["Response"])
 	return typ
 }
 
-func (typ *entityTypeDef) AddCommand(commandType string, handler CommandHandler,
+func calcJsHandlerVersion(jsHandler string) string {
+	hash := md5.New()
+	hash.Write([]byte(jsHandler))
+	return base64.StdEncoding.EncodeToString(hash.Sum(nil))
+}
+
+func (typ *entityTypeDef) AddCommand(commandType string, handler CommandHandler, handlerVersion string,
 	requestSchema *runtime.Schema, responseSchema *runtime.Schema) *entityTypeDef {
 	typ.commandDefsMutex.Lock()
 	defer typ.commandDefsMutex.Unlock()
@@ -48,6 +57,7 @@ func (typ *entityTypeDef) AddCommand(commandType string, handler CommandHandler,
 		requestSchema:  requestSchema,
 		responseSchema: responseSchema,
 		handler:        handler,
+		handlerVersion: handlerVersion,
 	}
 	return typ
 }

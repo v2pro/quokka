@@ -16,7 +16,7 @@ func Test_create_object(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return "hello"
-		}, nil, nil)
+		},"", nil, nil)
 	entityId := xid.New().String()
 	processor := newCommandProcessor(0, "user")
 	resp := processor.exec(context.TODO(), &command{
@@ -35,10 +35,10 @@ func Test_get_object(t *testing.T) {
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			runtime.AsObj(doc).Set("hello", "world")
 			return nil
-		}, nil, nil).AddCommand("get",
+		}, "",nil, nil).AddCommand("get",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return doc
-		}, nil, nil)
+		}, "",nil, nil)
 
 	entityId := xid.New().String()
 	processor := newCommandProcessor(0, "user")

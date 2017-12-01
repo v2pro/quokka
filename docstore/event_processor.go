@@ -32,6 +32,7 @@ type Event struct {
 	CommandId       string          `json:"c"`
 	CommandType     string          `json:"t"`
 	CommandRequest  json.RawMessage `json:"r"`
+	HandlerVersion  string          `json:"h"`
 	CommandResponse json.RawMessage `json:"p"`
 	State           json.RawMessage `json:"s"`
 	Delta           json.RawMessage `json:"d"`

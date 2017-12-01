@@ -6,7 +6,7 @@ import (
 	"github.com/v2pro/quokka/docstore/runtime"
 	"github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
-	"github.com/v2pro/go-linux-amd64-bootstrap/src/fmt"
+	"fmt"
 )
 
 func init() {

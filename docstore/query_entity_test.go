@@ -13,7 +13,7 @@ func Test_entity_missing(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil)
+		}, "",nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:9879")
 	queryAndExpectError(t, "http://127.0.0.1:9879/docstore/entities/user/123", ErrEntityMissing)
 }
@@ -23,10 +23,10 @@ func Test_query_entity_cache(t *testing.T) {
 	reset("user").AddCommand("create",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil).AddCommand("noop",
+		}, "",nil, nil).AddCommand("noop",
 		func(doc interface{}, request interface{}) (resp interface{}) {
 			return nil
-		}, nil, nil)
+		},"", nil, nil)
 	StartNode(context.TODO(), "127.0.0.1:9879")
 	queryAndExpectError(t, "http://127.0.0.1:9879/docstore/entities/user/123", ErrEntityMissing)
 	execAndExpectSuccess(t, "http://127.0.0.1:9879/docstore/user/create", "EntityId", "123")
