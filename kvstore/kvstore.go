@@ -13,11 +13,11 @@ const PartitionsCount = ZonesCount * PartitionsPerZone
 var KeyConflictError = errors.New("key conflict")
 
 func HashToPartition(entityId string) uint64 {
-	hash := murmur3.Sum64([]byte(entityId[1:]))
+	hash := murmur3.Sum64([]byte(entityId[:len(entityId) - 1]))
 	// by control the first byte, we can control the partition of the entity
 	// for example, we can assign large entity type to
 	// not sharing partitions with other entity types
-	zoneId := lookupZone(entityId[0])
+	zoneId := lookupZone(entityId[len(entityId) - 1])
 	partition := hash % 997
 	return zoneId * partition
 }

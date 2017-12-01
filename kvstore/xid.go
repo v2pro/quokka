@@ -17,7 +17,7 @@ func init() {
 // if one entity type has many entities, we can assign multiple zone to expand capacity
 // if many entity types only has small number of entities, we can compact them in same zone
 func NewID(zoneId int) string {
-	return zoneIdToChar[uint64(zoneId)] + xid.New().String()
+	return xid.New().String() + zoneIdToChar[uint64(zoneId)]
 }
 
 func lookupZone(b byte) uint64 {

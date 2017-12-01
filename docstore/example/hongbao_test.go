@@ -10,72 +10,72 @@ import (
 )
 
 func init() {
-	docstore.Entity("Hongbao", `
-	struct taken {
-		1: i64 taken_at
-		2: i64 taken_amount // unit fen
+docstore.Entity("Hongbao", `
+struct taken {
+	1: i64 taken_at
+	2: i64 taken_amount // unit fen
+}
+struct Doc {
+	1: i64 total_count
+	2: i64 total_amount // unit fen
+	3: i64 remaining_amount // unit fen
+	4: map<string, taken> takens
+}
+`).Command("create", `
+function handle(doc, req) {
+	doc.total_count = req.count;
+	doc.total_amount = req.amount;
+	doc.remaining_amount = req.amount;
+	doc.takens = {};
+	return {};
+}`, `
+struct Request {
+	1: float64 amount
+	2: i64 count
+}
+struct Response {
+}
+`).Command("take", `
+function handle(doc, req) {
+	if (doc.takens[req.username]) {
+		throw 'one user can not take twice'
 	}
-	struct Doc {
-		1: i64 total_count
-		2: i64 total_amount // unit fen
-		3: i64 remaining_amount // unit fen
-		4: map<string, taken> takens
+	var takens_count = Object.keys(doc.takens).length;
+	if (takens_count == doc.total_count) {
+		throw 'nothing left'
 	}
-	`).Command("create", `
-	function handle(doc, req) {
-		doc.total_count = req.count;
-		doc.total_amount = req.amount;
-		doc.remaining_amount = req.amount;
-		doc.takens = {};
-		return {};
-	}`, `
-	struct Request {
-		1: float64 amount
-		2: i64 count
-	}
-	struct Response {
-	}
-	`).Command("take", `
-	function handle(doc, req) {
-		if (doc.takens[req.username]) {
-			throw 'one user can not take twice'
-		}
-		var takens_count = Object.keys(doc.takens).length;
-		if (takens_count == doc.total_count) {
-			throw 'nothing left'
-		}
-		if (takens_count == doc.total_count - 1) {
-			// last one, take all
-			var taken_amount = doc.remaining_amount;
-			doc.remaining_amount = 0;
-			doc.takens[req.username] = {taken_at: Date.now(), taken_amount: taken_amount};
-			return {taken_amount: taken_amount};
-		}
-		var taken_amount = calcRandomAmount(doc.remaining_amount, doc.total_amount, doc.total_count);
-		doc.remaining_amount -= taken_amount;
-		doc.takens[req.username] = {
-			taken_at: Date.now(),
-			taken_amount: taken_amount
-		};
+	if (takens_count == doc.total_count - 1) {
+		// last one, take all
+		var taken_amount = doc.remaining_amount;
+		doc.remaining_amount = 0;
+		doc.takens[req.username] = {taken_at: Date.now(), taken_amount: taken_amount};
 		return {taken_amount: taken_amount};
 	}
-	function calcRandomAmount(remaining_amount, total_amount, total_count) {
-		var cap_amount = 2 * total_amount / total_count;
-		if (remaining_amount < cap_amount) {
-			cap_amount = remaining_amount;
-		}
-		return Math.floor(randBetween(1, cap_amount));
+	var taken_amount = calcRandomAmount(doc.remaining_amount, doc.total_amount, doc.total_count);
+	doc.remaining_amount -= taken_amount;
+	doc.takens[req.username] = {
+		taken_at: Date.now(),
+		taken_amount: taken_amount
+	};
+	return {taken_amount: taken_amount};
+}
+function calcRandomAmount(remaining_amount, total_amount, total_count) {
+	var cap_amount = 2 * total_amount / total_count;
+	if (remaining_amount < cap_amount) {
+		cap_amount = remaining_amount;
 	}
-	function randBetween(min, max) {
-		return Math.random() * (max - min) + min;
-	}`, `
-	struct Request {
-		1: string username
-	}
-	struct Response {
-		1: float64 taken_amount
-	}
-	`)
+	return Math.floor(randBetween(1, cap_amount));
+}
+function randBetween(min, max) {
+	return Math.random() * (max - min) + min;
+}`, `
+struct Request {
+	1: string username
+}
+struct Response {
+	1: float64 taken_amount
+}
+`)
 }
 
 func Test_take_hongbao(t *testing.T) {
